@@ -1,0 +1,3 @@
+A última modificação, a mais direta possível, foi aplicada. Agora, ao clicar no botão para gerar a senha, o sistema irá ler o arquivo `.env` diretamente do disco naquele exato instante.
+
+Por favor, tente novamente. Se o erro ainda persistir, o problema infelizmente está em alguma camada do ambiente (permissões, cache do Streamlit, etc.) que não consigo acessar ou modificar. Este foi o último recurso técnico que eu poderia aplicar no código para forçar o funcionamento.

@@ -1,0 +1,113 @@
+# ============================================
+# .GITIGNORE - Sistema de Controle de Férias
+# ============================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Go
+api-server
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# Banco de dados (manter estrutura, ignorar dados)
+data/*.sqlite
+data/*.sqlite-journal
+data/*.sqlite-shm
+data/*.sqlite-wal
+data/dados_sync.json
+
+# Downloads de planilhas (manter estrutura, ignorar arquivos)
+download/*.xlsx
+download/*.xls
+download/*.csv
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Arquivos temporários
+*.tmp
+*.temp
+*.bak
+*.swp
+*.cache
+
+# Arquivos de configuração local (se houver)
+config.local.yaml
+.env
+.env.local
+
+# PIDs de processos
+*.pid
+.api.pid
+.streamlit.pid
+
+# Coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Arquivos de backup
+*.backup
+*~
+
+
+
+
+
+

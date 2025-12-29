@@ -1,0 +1,95 @@
+# ============================================
+# EXEMPLO: Integração com docker-compose existente
+# ============================================
+# 
+# Este é um exemplo de como adicionar o Controle de Férias
+# ao seu docker-compose.yml existente que já tem outros serviços.
+#
+# Copie apenas os serviços abaixo para o seu docker-compose.yml principal
+#
+
+version: '3.8'
+
+services:
+  # ============================================
+  # SEUS SERVIÇOS EXISTENTES (exemplo)
+  # ============================================
+  # evolution-api:
+  #   image: atendai/evolution-api:latest
+  #   container_name: evolution-api
+  #   ports:
+  #     - "8081:8080"
+  #   networks:
+  #     - controle-ferias-network
+  
+  # outros-servicos:
+  #   ...
+
+  # ============================================
+  # CONTROLE DE FÉRIAS - Frontend
+  # ============================================
+  controle-ferias-frontend:
+    build: ./controle-ferias  # Ajuste o caminho conforme necessário
+    container_name: controle-ferias-frontend
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./controle-ferias/data:/app/data
+      - ./controle-ferias/download:/app/download
+      - ./controle-ferias/logs:/app/logs
+      - ./controle-ferias/.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["./scripts/iniciar.sh"]
+    restart: always
+    networks:
+      - controle-ferias-network  # Use a mesma rede dos outros serviços
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================
+  # CONTROLE DE FÉRIAS - Scheduler
+  # ============================================
+  controle-ferias-scheduler:
+    build: ./controle-ferias  # Mesmo caminho
+    container_name: controle-ferias-scheduler
+    volumes:
+      - ./controle-ferias/data:/app/data
+      - ./controle-ferias/download:/app/download
+      - ./controle-ferias/logs:/app/logs
+      - ./controle-ferias/.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["./scripts/scheduler.sh"]
+    restart: always
+    networks:
+      - controle-ferias-network  # Mesma rede
+    depends_on:
+      - controle-ferias-frontend
+      # - evolution-api  # Descomente se quiser garantir ordem
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "scheduler.jobs"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+# ============================================
+# REDE COMPARTILHADA
+# ============================================
+networks:
+  controle-ferias-network:
+    driver: bridge
+    # OU se a rede já existe:
+    # external: true
+    # name: sua-rede-existente
+
+
+
+
+
+

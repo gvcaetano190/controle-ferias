@@ -1,0 +1,76 @@
+version: '3.8'
+
+# Configuração para restart automático após reboot do host
+# Os containers iniciarão automaticamente quando o sistema ligar
+
+services:
+  # ============================================
+  # FRONTEND - Dashboard Streamlit
+  # ============================================
+  frontend:
+    build: .
+    container_name: controle-ferias-frontend
+    ports:
+      - "8501:8501"
+    volumes:
+      # Persistência de dados
+      - ./data:/app/data
+      - ./download:/app/download
+      - ./logs:/app/logs
+      # Configurações
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["./scripts/iniciar.sh"]
+    restart: always
+    networks:
+      - controle-ferias-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Restart: always garante que o container reinicie mesmo após reboot do host
+
+  # ============================================
+  # SCHEDULER - Agendamento Automático
+  # ============================================
+  scheduler:
+    build: .
+    container_name: controle-ferias-scheduler
+    volumes:
+      # Persistência de dados (mesmo volume do frontend)
+      - ./data:/app/data
+      - ./download:/app/download
+      - ./logs:/app/logs
+      # Configurações
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["./scripts/scheduler.sh"]
+    restart: always
+    networks:
+      - controle-ferias-network
+    depends_on:
+      frontend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "scheduler.jobs"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # Restart: always garante que o container reinicie mesmo após reboot do host
+
+networks:
+  controle-ferias-network:
+    driver: bridge
+
+volumes:
+  # Volumes nomeados para persistência (opcional)
+  data:
+    driver: local
+  logs:
+    driver: local
+
