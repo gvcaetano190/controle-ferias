@@ -236,12 +236,14 @@ _Sistema de Controle de Férias_
             data_formatada = data_saida_str
             dias_texto = "em breve"
         
+        # Evita backslashes dentro de expressão em f-string
+        unidade_block = f"*Unidade:* {unidade}\n" if unidade else ""
+        
         texto = f"""
 📅 *Aviso de Férias Próximas*
 
 *Funcionário:* {nome}
-{f"*Unidade:* {unidade}\n" if unidade else ""}
-🏖️ *Data de Saída:* {data_formatada} ({dias_texto})
+{unidade_block}🏖️ *Data de Saída:* {data_formatada} ({dias_texto})
 
 ⚠️ Prepare os acessos para bloqueio.
 
