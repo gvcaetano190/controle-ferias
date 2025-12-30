@@ -11,6 +11,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     bash \
     curl \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Copia arquivos de dependências primeiro (cache de layers)
