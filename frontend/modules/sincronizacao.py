@@ -10,7 +10,8 @@ ROOT_DIR = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
+import subprocess
 
 from config.settings import settings
 from core.sync_manager import SyncManager
@@ -24,32 +25,45 @@ def render(database):
     
     if last_sync:
         sync_at = last_sync.get("sync_at", "")
-        try:
+        sync_time = None
+        
+        if sync_at:
             # Tenta diferentes formatos de timestamp
-            sync_time = None
-            if sync_at:
+            try:
                 # Formato SQLite: YYYY-MM-DD HH:MM:SS
+                sync_time = datetime.strptime(sync_at, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
                 try:
-                    sync_time = datetime.strptime(sync_at, '%Y-%m-%d %H:%M:%S')
-                except:
-                    # Formato ISO
+                    # Formato ISO com microsegundos: YYYY-MM-DDTHH:MM:SS.ffffff
+                    sync_time = datetime.fromisoformat(sync_at.replace('Z', '+00:00'))
+                except ValueError:
                     try:
-                        sync_time = datetime.fromisoformat(sync_at.replace('Z', '+00:00'))
-                    except:
+                        # Formato ISO sem separador T: YYYY-MM-DD HH:MM:SS.ffffff
+                        if '.' in sync_at:
+                            sync_at_clean = sync_at.split('.')[0]
+                            sync_time = datetime.strptime(sync_at_clean, '%Y-%m-%d %H:%M:%S')
+                        else:
+                            sync_time = datetime.strptime(sync_at, '%Y-%m-%d %H:%M:%S')
+                    except ValueError:
                         pass
-            
-            if sync_time:
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("📅 Última Sync", sync_time.strftime('%d/%m/%Y %H:%M'))
-                with col2:
-                    st.metric("📊 Registros", last_sync.get('total_registros', 0))
-                with col3:
-                    st.metric("📑 Abas", last_sync.get('total_abas', 0))
-            else:
-                st.warning(f"⚠️ Formato de data não reconhecido: {sync_at}")
-        except Exception as e:
-            st.warning(f"⚠️ Erro ao ler data: {e}")
+        
+        if sync_time:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("📅 Última Sync", sync_time.strftime('%d/%m/%Y %H:%M'))
+            with col2:
+                st.metric("📊 Registros", last_sync.get('total_registros', 0))
+            with col3:
+                st.metric("📑 Abas", last_sync.get('total_abas', 0))
+        else:
+            # Se não conseguiu fazer parse, mostra mesmo assim sem formatação
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("📅 Última Sync", sync_at)
+            with col2:
+                st.metric("📊 Registros", last_sync.get('total_registros', 0))
+            with col3:
+                st.metric("📑 Abas", last_sync.get('total_abas', 0))
     else:
         st.info("ℹ️ Nenhuma sincronização realizada ainda. Clique em 'Sincronizar Agora'.")
     
@@ -65,9 +79,7 @@ def render(database):
         # Botão para verificar status do scheduler
         if st.button("📊 Status Scheduler", help="Verificar se o scheduler está rodando", use_container_width=True):
             with st.spinner("Verificando..."):
-                import subprocess
                 from pathlib import Path
-                from datetime import datetime, timedelta
                 
                 # Detecta se está em Docker
                 em_docker = Path("/.dockerenv").exists()
@@ -115,7 +127,8 @@ def render(database):
                         try:
                             lock_content = lock_file.read_text().strip()
                             mensagem = f"✅ **Scheduler rodando** (container separado)\n\n"
-                            mensagem += f"**📅 Iniciado em:** {lock_content}\n\n"
+                            mensagem += f"**� Horário Atual:** {agora.strftime('%d/%m/%Y %H:%M:%S')}\n\n"
+                            mensagem += f"**�📅 Iniciado em:** {lock_content}\n\n"
                             mensagem += f"**⏰ Horários Configurados:**\n"
                             if settings.SYNC_ENABLED:
                                 mensagem += f"- 🔄 Sincronização: {sync_hour:02d}:{sync_minute:02d}\n"
@@ -145,6 +158,7 @@ def render(database):
                             pids = [pid.strip() for pid in pids if pid.strip()]
                             if pids:
                                 mensagem = f"✅ **Scheduler rodando**\n\n"
+                                mensagem += f"**🕐 Horário Atual:** {agora.strftime('%d/%m/%Y %H:%M:%S')}\n\n"
                                 mensagem += f"**PID(s):** {', '.join(pids)}\n\n"
                                 mensagem += f"**⏰ Horários Configurados:**\n"
                                 if settings.SYNC_ENABLED:
