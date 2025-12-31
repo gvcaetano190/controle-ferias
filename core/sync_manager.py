@@ -248,12 +248,16 @@ class SyncManager:
         self.dados_processados = []
         self.abas_processadas = []
         
+        print(f"\n📋 Total de abas na planilha: {len(wb.sheetnames)}")
+        
         for nome_aba in wb.sheetnames:
             mes, ano = self._extrair_mes_ano(nome_aba)
             
+            # Se não conseguir extrair mês/ano, usa valores padrão
             if mes is None:
-                print(f"   ⏩ Ignorando: {nome_aba}")
-                continue
+                print(f"   ⚠️  {nome_aba}: sem mês/ano identificável, usando mês/ano atuais")
+                mes = datetime.now().month
+                ano = datetime.now().year
             
             ws = wb[nome_aba]
             funcionarios = self._processar_aba(ws, nome_aba, mes, ano)
@@ -267,6 +271,15 @@ class SyncManager:
                     "total_funcionarios": len(funcionarios)
                 })
                 print(f"   ✅ {nome_aba}: {len(funcionarios)} funcionários")
+            else:
+                print(f"   ⚠️  {nome_aba}: 0 funcionários (aba vazia ou sem dados válidos)")
+                # Adiciona aba mesmo vazia para contar
+                self.abas_processadas.append({
+                    "nome": nome_aba,
+                    "mes": mes,
+                    "ano": ano,
+                    "total_funcionarios": 0
+                })
         
         print(f"\n📈 Total: {len(self.dados_processados)} funcionários, {len(self.abas_processadas)} abas")
         return self.dados_processados
@@ -275,11 +288,57 @@ class SyncManager:
         """Processa uma aba específica."""
         funcionarios = []
         
-        # Mapeia colunas
+        # Mapeia colunas pelo nome do header
         colunas = {}
+        colunas_por_nome = {}  # Mapeamento nome -> índice
         for idx, cell in enumerate(ws[1], start=0):
             if cell.value:
-                colunas[idx] = str(cell.value).strip()
+                nome_col = str(cell.value).strip()
+                colunas[idx] = nome_col
+                colunas_por_nome[nome_col.upper()] = idx
+        
+        # Encontra índices das colunas principais DINAMICAMENTE
+        idx_unidade = None
+        idx_nome = None
+        idx_motivo = None
+        idx_saida = None
+        idx_retorno = None
+        idx_gestor = None
+        
+        for nome_col, idx in colunas_por_nome.items():
+            if nome_col in ["RESP.", "RESP", "UNIDADE", "RESPONSAVEL", "RESPONSÁVEL"]:
+                idx_unidade = idx
+            elif nome_col in ["NOME", "FUNCIONÁRIO", "FUNCIONARIO", "COLABORADOR"]:
+                idx_nome = idx
+            elif nome_col in ["MOTIVO", "TIPO", "RAZÃO", "RAZAO"]:
+                idx_motivo = idx
+            elif nome_col in ["SAÍDA", "SAIDA", "DATA SAÍDA", "DATA SAIDA", "INÍCIO", "INICIO"]:
+                idx_saida = idx
+            elif nome_col in ["RETORNO", "RETORNO/LIBERAÇÃO", "RETORNO/LIBERACAO", "LIBERAÇÃO", "LIBERACAO", "DATA RETORNO", "FIM"]:
+                idx_retorno = idx
+            elif "GESTOR" in nome_col:
+                idx_gestor = idx
+        
+        # Fallback para índices fixos se não encontrar pelo nome
+        if idx_unidade is None:
+            idx_unidade = 0
+        if idx_nome is None:
+            idx_nome = 1
+        if idx_motivo is None:
+            idx_motivo = 2
+        if idx_saida is None:
+            idx_saida = 3
+        if idx_retorno is None:
+            # Procura a primeira coluna após saída que tenha dados de data
+            idx_retorno = 4
+            for idx_col in range(idx_saida + 1, len(colunas) + 2):
+                if idx_col in colunas_por_nome.values():
+                    # Verifica se o nome parece ser retorno
+                    for nome, idx in colunas_por_nome.items():
+                        if idx == idx_col and any(x in nome for x in ["RETORNO", "LIBERAÇÃO", "LIBERACAO", "FIM"]):
+                            idx_retorno = idx_col
+                            break
+                    break
         
         # Índices de sistemas
         idx_sistemas = {}
@@ -290,39 +349,33 @@ class SyncManager:
                     idx_sistemas[sistema] = idx
                     break
         
-        # Índice do gestor
-        idx_gestor = None
-        for idx, nome_col in colunas.items():
-            if "GESTOR" in nome_col.upper():
-                idx_gestor = idx
-                break
-        
         # Processa linhas
-        for row in ws.iter_rows(min_row=2):
+        for i, row in enumerate(ws.iter_rows(min_row=2), start=2):
             try:
-                unidade = row[0].value if len(row) > 0 else None
-                nome = row[1].value if len(row) > 1 else None
-                motivo = row[2].value if len(row) > 2 else None
-                saida_raw = row[3].value if len(row) > 3 else None
-                retorno_raw = row[4].value if len(row) > 4 else None
-                
-                if not nome or str(nome).strip().lower() in ["", "nan", "none"]:
+                # Extração de dados brutos usando índices dinâmicos
+                unidade = row[idx_unidade].value if len(row) > idx_unidade else None
+                nome_bruto = row[idx_nome].value if len(row) > idx_nome else None
+                motivo = row[idx_motivo].value if len(row) > idx_motivo else None
+                saida_raw = row[idx_saida].value if len(row) > idx_saida else None
+                retorno_raw = row[idx_retorno].value if len(row) > idx_retorno else None
+
+                # Lógica de pular linha
+                if not nome_bruto or str(nome_bruto).strip().lower() in ["", "nan", "none"]:
                     continue
                 
+                nome = str(nome_bruto).strip()
+
                 # Datas
                 data_saida = self._parse_data(saida_raw)
-                if isinstance(saida_raw, datetime):
-                    data_saida = saida_raw
+                data_retorno = self._parse_data(retorno_raw)
                 
-                data_retorno = None
-                if isinstance(retorno_raw, datetime):
+                # Correção de data de retorno se necessário
+                if isinstance(retorno_raw, datetime) and isinstance(data_saida, datetime):
                     data_retorno = self._corrigir_data(retorno_raw, data_saida)
-                else:
-                    data_retorno = self._parse_data(retorno_raw)
-                
+
                 if not data_saida or not data_retorno:
                     continue
-                
+
                 # Gestor
                 gestor = ""
                 if idx_gestor and len(row) > idx_gestor:
@@ -344,7 +397,7 @@ class SyncManager:
                 
                 # Monta registro
                 funcionarios.append({
-                    "nome": str(nome).strip(),
+                    "nome": nome,
                     "unidade": str(unidade or "").strip() if str(unidade).lower() != "nan" else "",
                     "motivo": str(motivo or "").strip() if str(motivo).lower() != "nan" else "",
                     "data_saida": data_saida.strftime('%Y-%m-%d'),
@@ -360,7 +413,7 @@ class SyncManager:
                 continue
         
         return funcionarios
-    
+
     # ==================== SINCRONIZAÇÃO ====================
     
     def sincronizar(self, forcar: bool = False) -> Dict:
