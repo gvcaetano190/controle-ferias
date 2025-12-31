@@ -223,6 +223,13 @@ def iniciar_scheduler():
         print("❌ APScheduler não disponível. Instale com: pip install apscheduler")
         return False
     
+    # Cria arquivo de lock para indicar que o scheduler está rodando
+    try:
+        lock_file = Path(settings.DATA_DIR) / ".scheduler.lock"
+        lock_file.write_text(f"{datetime.now().isoformat()}\n")
+    except:
+        pass
+    
     _scheduler = BackgroundScheduler()
     
     # Job de sincronização diária (segunda a sexta)
@@ -290,6 +297,15 @@ def parar_scheduler():
     if _scheduler:
         _scheduler.shutdown()
         _scheduler = None
+        
+        # Remove arquivo de lock
+        try:
+            lock_file = Path(settings.DATA_DIR) / ".scheduler.lock"
+            if lock_file.exists():
+                lock_file.unlink()
+        except:
+            pass
+        
         print("⏹️ Scheduler parado")
 
 

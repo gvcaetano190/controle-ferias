@@ -752,51 +752,82 @@ def _verificar_status_servicos(database, config_atual):
     
     # 1. Verifica Scheduler
     try:
-        result = subprocess.run(
-            ["pgrep", "-f", "scheduler.jobs"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            pids = result.stdout.strip().split('\n')
-            pids = [pid.strip() for pid in pids if pid.strip()]
-            if pids:
-                status_geral["scheduler"]["status"] = "sucesso"
-                status_geral["scheduler"]["mensagem"] = f"Scheduler rodando (PID: {', '.join(pids)})"
-                status_geral["scheduler"]["detalhes"] = f"{len(pids)} processo(s) ativo(s)"
-            else:
-                status_geral["scheduler"]["status"] = "erro"
-                status_geral["scheduler"]["mensagem"] = "Scheduler não está rodando"
-        else:
-            # Tenta com ps aux (fallback)
+        # Detecta se está rodando em Docker
+        em_docker = Path("/.dockerenv").exists()
+        
+        if em_docker:
+            # No Docker, verifica o container scheduler
             try:
                 result = subprocess.run(
-                    ["ps", "aux"],
+                    ["docker", "ps", "--filter", "name=controle-ferias-scheduler", "--format", "{{.Status}}"],
                     capture_output=True,
                     text=True,
                     timeout=5
                 )
-                if result.returncode == 0:
-                    encontrado = False
-                    for line in result.stdout.split('\n'):
-                        if 'scheduler.jobs' in line and 'grep' not in line:
-                            encontrado = True
-                            parts = line.split()
-                            if len(parts) > 1:
-                                status_geral["scheduler"]["status"] = "sucesso"
-                                status_geral["scheduler"]["mensagem"] = f"Scheduler rodando (PID: {parts[1]})"
-                                status_geral["scheduler"]["detalhes"] = "Processo encontrado"
-                            break
-                    if not encontrado:
-                        status_geral["scheduler"]["status"] = "erro"
-                        status_geral["scheduler"]["mensagem"] = "Scheduler não está rodando"
+                if result.returncode == 0 and result.stdout.strip() and "Up" in result.stdout:
+                    status_geral["scheduler"]["status"] = "sucesso"
+                    status_geral["scheduler"]["mensagem"] = "Scheduler rodando em container"
+                    status_geral["scheduler"]["detalhes"] = result.stdout.strip()
+                else:
+                    status_geral["scheduler"]["status"] = "erro"
+                    status_geral["scheduler"]["mensagem"] = "Container scheduler não está rodando"
+            except:
+                # Fallback: verifica se o arquivo de lock existe (compartilhado entre containers)
+                lock_file = Path("/app/data/.scheduler.lock")
+                if lock_file.exists():
+                    status_geral["scheduler"]["status"] = "sucesso"
+                    status_geral["scheduler"]["mensagem"] = "Scheduler rodando (container separado)"
+                    status_geral["scheduler"]["detalhes"] = "Detectado via lock file"
                 else:
                     status_geral["scheduler"]["status"] = "warning"
-                    status_geral["scheduler"]["mensagem"] = "Não foi possível verificar (comando ps não disponível)"
-            except:
-                status_geral["scheduler"]["status"] = "warning"
-                status_geral["scheduler"]["mensagem"] = "Não foi possível verificar o scheduler"
+                    status_geral["scheduler"]["mensagem"] = "Não foi possível verificar (Docker)"
+        else:
+            # Não está em Docker, verifica localmente
+            result = subprocess.run(
+                ["pgrep", "-f", "scheduler.jobs"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                pids = result.stdout.strip().split('\n')
+                pids = [pid.strip() for pid in pids if pid.strip()]
+                if pids:
+                    status_geral["scheduler"]["status"] = "sucesso"
+                    status_geral["scheduler"]["mensagem"] = f"Scheduler rodando (PID: {', '.join(pids)})"
+                    status_geral["scheduler"]["detalhes"] = f"{len(pids)} processo(s) ativo(s)"
+                else:
+                    status_geral["scheduler"]["status"] = "erro"
+                    status_geral["scheduler"]["mensagem"] = "Scheduler não está rodando"
+            else:
+                # Tenta com ps aux (fallback)
+                try:
+                    result = subprocess.run(
+                        ["ps", "aux"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        encontrado = False
+                        for line in result.stdout.split('\n'):
+                            if 'scheduler.jobs' in line and 'grep' not in line:
+                                encontrado = True
+                                parts = line.split()
+                                if len(parts) > 1:
+                                    status_geral["scheduler"]["status"] = "sucesso"
+                                    status_geral["scheduler"]["mensagem"] = f"Scheduler rodando (PID: {parts[1]})"
+                                    status_geral["scheduler"]["detalhes"] = "Processo encontrado"
+                                break
+                        if not encontrado:
+                            status_geral["scheduler"]["status"] = "erro"
+                            status_geral["scheduler"]["mensagem"] = "Scheduler não está rodando"
+                    else:
+                        status_geral["scheduler"]["status"] = "warning"
+                        status_geral["scheduler"]["mensagem"] = "Não foi possível verificar (comando ps não disponível)"
+                except:
+                    status_geral["scheduler"]["status"] = "warning"
+                    status_geral["scheduler"]["mensagem"] = "Não foi possível verificar o scheduler"
     except Exception as e:
         status_geral["scheduler"]["status"] = "erro"
         status_geral["scheduler"]["mensagem"] = f"Erro ao verificar: {str(e)}"
