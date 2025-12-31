@@ -508,11 +508,11 @@ def render(database):
                 st.session_state['mostrar_status_servicos'] = False
             
             # Botão com label dinâmico
-            label_botao = "🔍 Verificar Status" if not st.session_state['mostrar_status_servicos'] else "❌ Fechar Status"
+            label_botao = "🔍 Verificar Todos Serviços" if not st.session_state['mostrar_status_servicos'] else "❌ Fechar Status"
             tipo_botao = "primary" if not st.session_state['mostrar_status_servicos'] else "secondary"
             
             verificar_status = st.button(label_botao, type=tipo_botao, width='stretch',
-                                        help="Verifica o status de todos os serviços do sistema")
+                                        help="Verifica o status de todos os serviços do sistema (Scheduler, BD, APIs)")
             
             if verificar_status:
                 # Toggle o estado
