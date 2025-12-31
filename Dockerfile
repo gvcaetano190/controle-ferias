@@ -7,11 +7,16 @@ LABEL description="Sistema de gerenciamento de férias com Streamlit e scheduler
 # Define diretório de trabalho
 WORKDIR /app
 
+# Configura timezone para São Paulo (Brasil)
+ENV TZ=America/Sao_Paulo
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 # Instala dependências do sistema
 RUN apt-get update && apt-get install -y \
     bash \
     curl \
     procps \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Copia arquivos de dependências primeiro (cache de layers)

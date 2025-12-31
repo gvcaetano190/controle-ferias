@@ -21,6 +21,7 @@ services:
       - ./.env:/app/.env
     environment:
       - PYTHONUNBUFFERED=1
+      - TZ=America/Sao_Paulo
     command: ["./scripts/iniciar.sh"]
     restart: always
     networks:
@@ -48,6 +49,7 @@ services:
       - ./.env:/app/.env
     environment:
       - PYTHONUNBUFFERED=1
+      - TZ=America/Sao_Paulo
     command: ["./scripts/scheduler.sh"]
     restart: always
     networks:
