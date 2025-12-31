@@ -206,7 +206,7 @@ def render():
         if sync_logs:
             # Estatísticas rápidas
             total = len(sync_logs)
-            sucessos = len([s for s in sync_logs if (s.get('status') or '').lower() == 'sucesso'])
+            sucessos = len([s for s in sync_logs if (s.get('status') or '').lower() in ['sucesso', 'success']])
             erros = total - sucessos
             
             col_stat1, col_stat2, col_stat3 = st.columns(3)
