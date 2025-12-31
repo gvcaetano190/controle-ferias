@@ -207,9 +207,68 @@ def job_mensagem_tarde():
         print(f"   ❌ Erro: {e}")
 
 
-def iniciar_scheduler():
+def _verificar_e_executar_jobs_perdidos():
+    """
+    Verifica se há jobs que deveriam ter sido executados hoje mas foram perdidos
+    (por exemplo, se o scheduler iniciou depois do horário agendado).
+    """
+    agora = datetime.now()
+    hora_atual = agora.hour
+    minuto_atual = agora.minute
+    
+    # Só executa em dias úteis
+    if not _eh_dia_util():
+        return
+    
+    print("\n🔍 Verificando jobs perdidos...")
+    jobs_executados = []
+    
+    # Verifica sincronização
+    if settings.SYNC_ENABLED:
+        hora_sync = settings.SYNC_HOUR
+        min_sync = settings.SYNC_MINUTE
+        if hora_atual > hora_sync or (hora_atual == hora_sync and minuto_atual > min_sync):
+            print(f"   ⏰ Sincronização das {hora_sync:02d}:{min_sync:02d} foi perdida, executando agora...")
+            job_sincronizacao()
+            jobs_executados.append("sync")
+    
+    # Verifica verificação de férias (09:00)
+    if settings.EVOLUTION_ENABLED:
+        if hora_atual > 9 or (hora_atual == 9 and minuto_atual > 0):
+            print(f"   ⏰ Verificação de férias das 09:00 foi perdida, executando agora...")
+            job_verificar_ferias_proximas()
+            jobs_executados.append("ferias")
+    
+    # Verifica mensagem matutina
+    if settings.EVOLUTION_ENABLED and settings.MENSAGEM_MANHA_ENABLED:
+        hora_manha = settings.MENSAGEM_MANHA_HOUR
+        min_manha = settings.MENSAGEM_MANHA_MINUTE
+        if hora_atual > hora_manha or (hora_atual == hora_manha and minuto_atual > min_manha):
+            print(f"   ⏰ Mensagem matutina das {hora_manha:02d}:{min_manha:02d} foi perdida, executando agora...")
+            job_mensagem_manha()
+            jobs_executados.append("manha")
+    
+    # Verifica mensagem vespertina
+    if settings.EVOLUTION_ENABLED and settings.MENSAGEM_TARDE_ENABLED:
+        hora_tarde = settings.MENSAGEM_TARDE_HOUR
+        min_tarde = settings.MENSAGEM_TARDE_MINUTE
+        if hora_atual > hora_tarde or (hora_atual == hora_tarde and minuto_atual > min_tarde):
+            print(f"   ⏰ Mensagem vespertina das {hora_tarde:02d}:{min_tarde:02d} foi perdida, executando agora...")
+            job_mensagem_tarde()
+            jobs_executados.append("tarde")
+    
+    if jobs_executados:
+        print(f"   ✅ {len(jobs_executados)} job(s) perdido(s) executado(s): {', '.join(jobs_executados)}")
+    else:
+        print("   ✅ Nenhum job perdido")
+
+
+def iniciar_scheduler(executar_perdidos: bool = True):
     """
     Inicia o agendador de tarefas.
+    
+    Args:
+        executar_perdidos: Se True, executa jobs que foram perdidos (horário já passou hoje)
     
     Agenda:
         - Sincronização: diária no horário configurado (SYNC_HOUR:SYNC_MINUTE)
@@ -286,6 +345,10 @@ def iniciar_scheduler():
         if settings.MENSAGEM_TARDE_ENABLED:
             print(f"   🌆 Mensagem Vespertina: seg-sex às {settings.MENSAGEM_TARDE_HOUR:02d}:{settings.MENSAGEM_TARDE_MINUTE:02d}")
     print("=" * 60)
+    
+    # Executa jobs perdidos se o scheduler iniciou depois do horário
+    if executar_perdidos:
+        _verificar_e_executar_jobs_perdidos()
     
     return True
 
