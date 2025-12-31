@@ -67,9 +67,46 @@ def render(database):
             with st.spinner("Verificando..."):
                 import subprocess
                 from pathlib import Path
+                from datetime import datetime, timedelta
                 
                 # Detecta se está em Docker
                 em_docker = Path("/.dockerenv").exists()
+                
+                # Busca configurações de horários
+                sync_hour = settings.SYNC_HOUR
+                sync_minute = settings.SYNC_MINUTE
+                manha_hour = settings.MENSAGEM_MANHA_HOUR
+                manha_minute = settings.MENSAGEM_MANHA_MINUTE
+                tarde_hour = settings.MENSAGEM_TARDE_HOUR
+                tarde_minute = settings.MENSAGEM_TARDE_MINUTE
+                
+                # Calcula próximo horário
+                agora = datetime.now()
+                proximos_horarios = []
+                
+                if settings.SYNC_ENABLED:
+                    sync_time = agora.replace(hour=sync_hour, minute=sync_minute, second=0, microsecond=0)
+                    if sync_time < agora:
+                        sync_time += timedelta(days=1)
+                    proximos_horarios.append(("Sincronização", sync_time))
+                
+                proximos_horarios.append(("Verificação Férias", agora.replace(hour=9, minute=0, second=0, microsecond=0)))
+                
+                if settings.MENSAGEM_MANHA_ENABLED:
+                    manha_time = agora.replace(hour=manha_hour, minute=manha_minute, second=0, microsecond=0)
+                    if manha_time < agora:
+                        manha_time += timedelta(days=1)
+                    proximos_horarios.append(("Mensagem Matutina", manha_time))
+                
+                if settings.MENSAGEM_TARDE_ENABLED:
+                    tarde_time = agora.replace(hour=tarde_hour, minute=tarde_minute, second=0, microsecond=0)
+                    if tarde_time < agora:
+                        tarde_time += timedelta(days=1)
+                    proximos_horarios.append(("Mensagem Vespertina", tarde_time))
+                
+                # Ordena e pega o próximo
+                proximos_horarios.sort(key=lambda x: x[1])
+                proximo = proximos_horarios[0] if proximos_horarios else None
                 
                 if em_docker:
                     # Verifica arquivo de lock
@@ -77,7 +114,19 @@ def render(database):
                     if lock_file.exists():
                         try:
                             lock_content = lock_file.read_text().strip()
-                            st.success(f"✅ Scheduler rodando (container separado)\n\nIniciado em: {lock_content}")
+                            mensagem = f"✅ **Scheduler rodando** (container separado)\n\n"
+                            mensagem += f"**📅 Iniciado em:** {lock_content}\n\n"
+                            mensagem += f"**⏰ Horários Configurados:**\n"
+                            if settings.SYNC_ENABLED:
+                                mensagem += f"- 🔄 Sincronização: {sync_hour:02d}:{sync_minute:02d}\n"
+                            mensagem += f"- 📅 Verificação Férias: 09:00\n"
+                            if settings.MENSAGEM_MANHA_ENABLED:
+                                mensagem += f"- 🌅 Mensagem Matutina: {manha_hour:02d}:{manha_minute:02d}\n"
+                            if settings.MENSAGEM_TARDE_ENABLED:
+                                mensagem += f"- 🌆 Mensagem Vespertina: {tarde_hour:02d}:{tarde_minute:02d}\n"
+                            if proximo:
+                                mensagem += f"\n**⏭️ Próxima execução:**\n{proximo[0]} às {proximo[1].strftime('%H:%M:%S')}"
+                            st.success(mensagem)
                         except:
                             st.success("✅ Scheduler rodando (container separado)")
                     else:
@@ -95,7 +144,19 @@ def render(database):
                             pids = result.stdout.strip().split('\n')
                             pids = [pid.strip() for pid in pids if pid.strip()]
                             if pids:
-                                st.success(f"✅ Scheduler rodando\n\nPID(s): {', '.join(pids)}")
+                                mensagem = f"✅ **Scheduler rodando**\n\n"
+                                mensagem += f"**PID(s):** {', '.join(pids)}\n\n"
+                                mensagem += f"**⏰ Horários Configurados:**\n"
+                                if settings.SYNC_ENABLED:
+                                    mensagem += f"- 🔄 Sincronização: {sync_hour:02d}:{sync_minute:02d}\n"
+                                mensagem += f"- 📅 Verificação Férias: 09:00\n"
+                                if settings.MENSAGEM_MANHA_ENABLED:
+                                    mensagem += f"- 🌅 Mensagem Matutina: {manha_hour:02d}:{manha_minute:02d}\n"
+                                if settings.MENSAGEM_TARDE_ENABLED:
+                                    mensagem += f"- 🌆 Mensagem Vespertina: {tarde_hour:02d}:{tarde_minute:02d}\n"
+                                if proximo:
+                                    mensagem += f"\n**⏭️ Próxima execução:**\n{proximo[0]} às {proximo[1].strftime('%H:%M:%S')}"
+                                st.success(mensagem)
                             else:
                                 st.error("❌ Scheduler não está rodando")
                         else:
