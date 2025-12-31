@@ -56,17 +56,14 @@ def render(database):
     st.divider()
     
     # Opções de sincronização
-    col1, col2, col3 = st.columns([2, 2, 1])
+    col1, col2 = st.columns([3, 1])
     
     with col1:
         forcar = st.checkbox("Forçar download (ignora cache)", value=False)
     
     with col2:
-        pass
-    
-    with col3:
         # Botão para verificar status do scheduler
-        if st.button("📊 Status Scheduler", help="Verificar se o scheduler está rodando"):
+        if st.button("📊 Status Scheduler", help="Verificar se o scheduler está rodando", use_container_width=True):
             with st.spinner("Verificando..."):
                 import subprocess
                 from pathlib import Path
