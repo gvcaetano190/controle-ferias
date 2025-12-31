@@ -169,6 +169,127 @@ class SyncManager:
         
         return dt
     
+    def _validar_data_contexto(self, dt: datetime, mes_aba: int, ano_aba: int) -> datetime:
+        """
+        Valida e corrige data baseado no contexto da aba.
+        
+        Se a data não faz sentido para a aba (ex: data em janeiro numa aba de dezembro),
+        tenta inverter dia/mês para ver se faz mais sentido.
+        
+        Args:
+            dt: Data a validar
+            mes_aba: Mês da aba (1-12)
+            ano_aba: Ano da aba
+            
+        Returns:
+            Data corrigida ou original
+        """
+        if not isinstance(dt, datetime) or not mes_aba:
+            return dt
+        
+        dia, mes = dt.day, dt.month
+        
+        # Se dia > 12, não tem como inverter
+        if dia > 12:
+            return dt
+        
+        # Se já está no mês correto da aba, não precisa corrigir
+        if mes == mes_aba:
+            return dt
+        
+        # Tenta inverter dia/mês
+        try:
+            dt_invertido = datetime(dt.year, dia, mes)
+        except ValueError:
+            return dt
+        
+        # Se a versão invertida cair no mês da aba, usa ela
+        if dt_invertido.month == mes_aba:
+            return dt_invertido
+        
+        # Se nenhuma das duas é o mês da aba, verifica qual está mais próxima
+        # Prioriza a que estiver no mesmo ano da aba
+        if dt.year == ano_aba and dt_invertido.year != ano_aba:
+            return dt
+        if dt_invertido.year == ano_aba and dt.year != ano_aba:
+            return dt_invertido
+        
+        # Se ambas estão no mesmo ano, mantém a original
+        return dt
+    
+    def _validar_data_retorno(self, dt_retorno: datetime, dt_saida: datetime, mes_aba: int, ano_aba: int) -> datetime:
+        """
+        Valida e corrige data de retorno baseado no mês da aba.
+        
+        Regra: Se a aba é de um mês X, o retorno pode ser no máximo no mês X+1
+        (30 dias de férias). Se está em um mês posterior, provavelmente
+        o dia/mês estão invertidos.
+        
+        Args:
+            dt_retorno: Data de retorno a validar
+            dt_saida: Data de saída (referência)
+            mes_aba: Mês da aba (1-12)
+            ano_aba: Ano da aba
+            
+        Returns:
+            Data de retorno corrigida ou original
+        """
+        if not isinstance(dt_retorno, datetime) or not mes_aba:
+            return dt_retorno
+        
+        dia, mes = dt_retorno.day, dt_retorno.month
+        
+        # Se dia > 12, não tem como inverter
+        if dia > 12:
+            return dt_retorno
+        
+        # Se dia == mes, não faz diferença inverter
+        if dia == mes:
+            return dt_retorno
+        
+        # Calcula o mês máximo permitido para retorno (mês da aba + 1)
+        mes_max_retorno = mes_aba + 1 if mes_aba < 12 else 1
+        ano_max_retorno = ano_aba if mes_aba < 12 else ano_aba + 1
+        
+        # Se o mês do retorno é maior que o permitido, tenta inverter
+        # Ex: aba JANEIRO (1), retorno máximo FEVEREIRO (2)
+        # Se retorno mostra MARÇO (3), está errado
+        
+        retorno_mes_ok = False
+        if dt_retorno.year == ano_aba and mes <= mes_max_retorno:
+            retorno_mes_ok = True
+        elif dt_retorno.year == ano_max_retorno and mes <= mes_max_retorno:
+            retorno_mes_ok = True
+        elif mes == mes_aba:  # Mesmo mês da aba é sempre OK
+            retorno_mes_ok = True
+        
+        if retorno_mes_ok:
+            return dt_retorno
+        
+        # Mês do retorno parece errado, tenta inverter
+        try:
+            dt_invertido = datetime(dt_retorno.year, dia, mes)
+        except ValueError:
+            return dt_retorno
+        
+        # Verifica se invertido faz sentido (após saída e no mês correto)
+        if dt_saida and dt_invertido < dt_saida:
+            return dt_retorno  # Invertido é antes da saída, mantém original
+        
+        # Verifica se o mês invertido está no range permitido
+        invertido_mes_ok = False
+        if dt_invertido.year == ano_aba and dt_invertido.month <= mes_max_retorno:
+            invertido_mes_ok = True
+        elif dt_invertido.year == ano_max_retorno and dt_invertido.month <= mes_max_retorno:
+            invertido_mes_ok = True
+        elif dt_invertido.month == mes_aba:
+            invertido_mes_ok = True
+        
+        if invertido_mes_ok:
+            return dt_invertido
+        
+        return dt_retorno
+    
     def _parse_data(self, valor: Any) -> Optional[datetime]:
         """Converte valor para datetime."""
         if pd.isna(valor) or str(valor).strip() in ["", "-", "nan"]:
@@ -369,9 +490,19 @@ class SyncManager:
                 data_saida = self._parse_data(saida_raw)
                 data_retorno = self._parse_data(retorno_raw)
                 
-                # Correção de data de retorno se necessário
+                # Valida e corrige data de SAÍDA baseado no contexto da aba
+                # Ex: "12/01/2025" numa aba de DEZEMBRO pode ser na verdade "01/12/2025"
+                if data_saida:
+                    data_saida = self._validar_data_contexto(data_saida, mes, ano)
+                
+                # Correção de data de retorno se necessário (formato datetime do Excel)
                 if isinstance(retorno_raw, datetime) and isinstance(data_saida, datetime):
                     data_retorno = self._corrigir_data(retorno_raw, data_saida)
+                
+                # Valida e corrige data de RETORNO baseado no mês da aba
+                # Ex: aba JANEIRO, retorno máximo FEVEREIRO. Se mostra MARÇO, inverte para 03/02
+                if data_retorno:
+                    data_retorno = self._validar_data_retorno(data_retorno, data_saida, mes, ano)
 
                 if not data_saida or not data_retorno:
                     continue
