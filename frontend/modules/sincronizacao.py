@@ -102,7 +102,11 @@ def render(database):
                         sync_time += timedelta(days=1)
                     proximos_horarios.append(("Sincronização", sync_time))
                 
-                proximos_horarios.append(("Verificação Férias", agora.replace(hour=9, minute=0, second=0, microsecond=0)))
+                # Verificação de férias às 09:00
+                ferias_time = agora.replace(hour=9, minute=0, second=0, microsecond=0)
+                if ferias_time < agora:
+                    ferias_time += timedelta(days=1)
+                proximos_horarios.append(("Verificação Férias", ferias_time))
                 
                 if settings.MENSAGEM_MANHA_ENABLED:
                     manha_time = agora.replace(hour=manha_hour, minute=manha_minute, second=0, microsecond=0)
