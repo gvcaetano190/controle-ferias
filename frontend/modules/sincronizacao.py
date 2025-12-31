@@ -56,13 +56,55 @@ def render(database):
     st.divider()
     
     # Opções de sincronização
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([2, 2, 1])
     
     with col1:
         forcar = st.checkbox("Forçar download (ignora cache)", value=False)
     
     with col2:
         pass
+    
+    with col3:
+        # Botão para verificar status do scheduler
+        if st.button("📊 Status Scheduler", help="Verificar se o scheduler está rodando"):
+            with st.spinner("Verificando..."):
+                import subprocess
+                from pathlib import Path
+                
+                # Detecta se está em Docker
+                em_docker = Path("/.dockerenv").exists()
+                
+                if em_docker:
+                    # Verifica arquivo de lock
+                    lock_file = Path("/app/data/.scheduler.lock")
+                    if lock_file.exists():
+                        try:
+                            lock_content = lock_file.read_text().strip()
+                            st.success(f"✅ Scheduler rodando (container separado)\n\nIniciado em: {lock_content}")
+                        except:
+                            st.success("✅ Scheduler rodando (container separado)")
+                    else:
+                        st.error("❌ Scheduler não está rodando\n\nO arquivo de lock não foi encontrado")
+                else:
+                    # Verifica localmente
+                    try:
+                        result = subprocess.run(
+                            ["pgrep", "-f", "scheduler.jobs"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5
+                        )
+                        if result.returncode == 0:
+                            pids = result.stdout.strip().split('\n')
+                            pids = [pid.strip() for pid in pids if pid.strip()]
+                            if pids:
+                                st.success(f"✅ Scheduler rodando\n\nPID(s): {', '.join(pids)}")
+                            else:
+                                st.error("❌ Scheduler não está rodando")
+                        else:
+                            st.error("❌ Scheduler não está rodando")
+                    except Exception as e:
+                        st.warning(f"⚠️ Não foi possível verificar: {e}")
     
     # Botão de sincronização
     if st.button("🔄 Sincronizar Agora", type="primary", width='stretch'):
