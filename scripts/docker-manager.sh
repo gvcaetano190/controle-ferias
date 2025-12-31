@@ -1,3 +1,4 @@
+cat << 'EOF' > ./docker-manager.sh
 #!/bin/bash
 # ===========================================
 # Gerenciador Docker - Sistema de Controle de Férias
@@ -9,7 +10,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-cd "$PROJECT_DIR"
+# Tenta ir para o diretório do projeto, mas não falha se já estiver lá
+cd "$PROJECT_DIR" 2>/dev/null || true
 
 # Detecta docker-compose
 if command -v docker-compose &> /dev/null; then
@@ -127,9 +129,12 @@ case "${1:-help}" in
         exit 1
         ;;
 esac
+EOF
 
+# Aplica correção de quebra de linha preventivamente (caso seu terminal cole errado)
+sed -i 's/\r$//' ./docker-manager.sh
 
+# Dá permissão de execução
+chmod +x ./docker-manager.sh
 
-
-
-
+echo "✅ Arquivo recriado com sucesso e formatado para Linux!"
