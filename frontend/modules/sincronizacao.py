@@ -76,8 +76,20 @@ def render(database):
         forcar = st.checkbox("Forçar download (ignora cache)", value=False)
     
     with col2:
-        # Botão para verificar status do scheduler
-        if st.button("📊 Status Scheduler", help="Verificar se o scheduler está rodando", use_container_width=True):
+        # Toggle para mostrar/esconder status do scheduler
+        if 'mostrar_status_scheduler' not in st.session_state:
+            st.session_state['mostrar_status_scheduler'] = False
+        
+        # Botão com label dinâmico
+        label_botao = "📊 Status Scheduler" if not st.session_state['mostrar_status_scheduler'] else "❌ Fechar"
+        tipo_botao = "primary" if not st.session_state['mostrar_status_scheduler'] else "secondary"
+        
+        if st.button(label_botao, help="Verificar se o scheduler está rodando", use_container_width=True, type=tipo_botao):
+            st.session_state['mostrar_status_scheduler'] = not st.session_state['mostrar_status_scheduler']
+            st.rerun()
+    
+    # Mostra informações do scheduler se estiver ativo
+    if st.session_state.get('mostrar_status_scheduler', False):
             with st.spinner("Verificando..."):
                 from pathlib import Path
                 
