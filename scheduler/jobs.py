@@ -52,46 +52,12 @@ def job_sincronizacao():
         
         if resultado["status"] == "success":
             print(f"   ✅ Sincronização concluída: {resultado['registros']} registros")
-            
-            # Notifica se configurado
-            if settings.NOTIFY_ON_SYNC and settings.EVOLUTION_ENABLED:
-                from integrations.evolution_api import EvolutionAPI
-                api = EvolutionAPI(
-                    url=settings.EVOLUTION_API_URL,
-                    numero=settings.EVOLUTION_NUMERO,
-                    api_key=settings.EVOLUTION_API_KEY
-                )
-                resultado_notificacao = api.enviar_mensagem_sync(resultado)
-                if resultado_notificacao["sucesso"]:
-                    print("   📨 Notificação de sincronização enviada")
-                else:
-                    print(f"   ⚠️ Erro ao enviar notificação: {resultado_notificacao['mensagem']}")
         
         elif resultado["status"] == "skipped":
             print(f"   ⏭️ Pulado: {resultado['message']}")
-            
-            # Notifica mesmo quando pulado, se configurado
-            if settings.NOTIFY_ON_SYNC and settings.EVOLUTION_ENABLED:
-                from integrations.evolution_api import EvolutionAPI
-                api = EvolutionAPI(
-                    url=settings.EVOLUTION_API_URL,
-                    numero=settings.EVOLUTION_NUMERO,
-                    api_key=settings.EVOLUTION_API_KEY
-                )
-                api.enviar_mensagem_sync(resultado)
         
         else:
             print(f"   ❌ Erro: {resultado['message']}")
-            
-            # Notifica erro também, se configurado
-            if settings.NOTIFY_ON_SYNC and settings.EVOLUTION_ENABLED:
-                from integrations.evolution_api import EvolutionAPI
-                api = EvolutionAPI(
-                    url=settings.EVOLUTION_API_URL,
-                    numero=settings.EVOLUTION_NUMERO,
-                    api_key=settings.EVOLUTION_API_KEY
-                )
-                api.enviar_mensagem_sync(resultado)
             
     except Exception as e:
         print(f"   ❌ Erro na sincronização: {e}")
