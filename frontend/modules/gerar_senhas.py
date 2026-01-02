@@ -89,7 +89,7 @@ def render(database):
                     incluir_minusculas_palavra = st.checkbox("Minúsculas (abc)", value=True, key="add_minusc_palavra")
                     adicionar_simbolos = st.checkbox("Símbolos (!@#)", value=True, key="add_simbs_palavra")
                 
-                if st.button("🎲 Fortalecer Palavra", type="secondary", use_container_width=True):
+                if st.button("🎲 Fortalecer Palavra", type="secondary", width="stretch"):
                     if palavra_base:
                         from utils.password_generator import password_generator
                         # Verifica se o método existe (para evitar erros de cache)
@@ -151,7 +151,7 @@ def render(database):
                 with col3:
                     incluir_simbolos = st.checkbox("Símbolos (!@#)", value=True)
                 
-                if st.button("🎲 Gerar Senha", type="secondary", use_container_width=True):
+                if st.button("🎲 Gerar Senha", type="secondary", width="stretch"):
                     from utils.password_generator import password_generator
                     senha = password_generator.gerar_senha_forte(
                         length=comprimento,
@@ -165,7 +165,7 @@ def render(database):
             if "senha_gerada" in st.session_state:
                 st.markdown("**Senha gerada:**")
                 st.code(st.session_state["senha_gerada"], language=None)
-                if st.button("📋 Copiar para Formulário", use_container_width=True):
+                if st.button("📋 Copiar para Formulário", width="stretch"):
                     st.session_state["senha_base_input"] = st.session_state["senha_gerada"]
                     st.success("✅ Copiada para o campo de senha!")
         
@@ -240,7 +240,7 @@ def render(database):
             submitted = st.form_submit_button(
                 f"🚀 Gerar {quantidade} Link(s)",
                 type="primary",
-                use_container_width=True
+                width="stretch"
             )
         
         # --- LÓGICA DE EXECUÇÃO (FORA DO FORM) ---
@@ -456,7 +456,7 @@ def render(database):
                     
                     with col2:
                         # Botão Status
-                        if st.button("🔄 Checar Status", key=f"chk_{link['id']}", use_container_width=True):
+                        if st.button("🔄 Checar Status", key=f"chk_{link['id']}", width="stretch"):
                             api = OneTimeSecretAPI(
                                 email=settings.ONETIMESECRET_EMAIL,
                                 api_key=settings.ONETIMESECRET_API_KEY
@@ -493,7 +493,7 @@ def render(database):
                                 st.error(f"❌ Erro: {resultado.get('mensagem', 'Erro desconhecido')}")
                         
                         # Botão Excluir
-                        if st.button("🗑️ Excluir", key=f"del_{link['id']}", use_container_width=True, type="secondary"):
+                        if st.button("🗑️ Excluir", key=f"del_{link['id']}", width="stretch", type="secondary"):
                             if database.excluir_link(link['id']):
                                 st.success("✅ Link excluído com sucesso!")
                                 

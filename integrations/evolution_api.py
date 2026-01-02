@@ -237,7 +237,7 @@ _Sistema de Controle de Férias_
             dias_texto = "em breve"
         
         # Evita backslashes dentro de expressão em f-string
-        unidade_block = f"*Unidade:* {unidade}\n" if unidade else ""
+        unidade_block = f"*RH Solicitante:* {unidade}\n" if unidade else ""
         
         texto = f"""
 📅 *Aviso de Férias Próximas*

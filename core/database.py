@@ -736,3 +736,591 @@ class Database:
         conn.close()
 
         return stats
+
+    # ==================== RELATÓRIOS ====================
+
+    def buscar_historico_ferias_por_funcionario(self) -> Dict[str, Dict]:
+        """
+        Busca histórico completo de férias agrupado por funcionário.
+        
+        Returns:
+            Dicionário com nome do funcionário como chave e dados como valor
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT nome, unidade, motivo, data_saida, data_retorno, gestor, aba_origem, mes, ano
+            FROM funcionarios
+            WHERE nome IS NOT NULL AND nome != ''
+            ORDER BY nome, data_saida DESC
+        """)
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        historico = {}
+        for row in rows:
+            row_dict = dict(row)
+            nome = row_dict["nome"]
+            
+            if nome not in historico:
+                historico[nome] = {"ferias": []}
+            
+            # Calcula dias de férias
+            dias = 0
+            data_saida_fmt = ""
+            data_retorno_fmt = ""
+            
+            if row_dict["data_saida"] and row_dict["data_retorno"]:
+                try:
+                    saida = datetime.strptime(row_dict["data_saida"], '%Y-%m-%d')
+                    retorno = datetime.strptime(row_dict["data_retorno"], '%Y-%m-%d')
+                    dias = (retorno - saida).days + 1
+                    data_saida_fmt = saida.strftime('%d/%m/%Y')
+                    data_retorno_fmt = retorno.strftime('%d/%m/%Y')
+                except:
+                    pass
+            
+            historico[nome]["ferias"].append({
+                "data_saida": row_dict["data_saida"],
+                "data_retorno": row_dict["data_retorno"],
+                "data_saida_fmt": data_saida_fmt,
+                "data_retorno_fmt": data_retorno_fmt,
+                "dias": dias,
+                "motivo": row_dict["motivo"],
+                "unidade": row_dict["unidade"],
+                "gestor": row_dict["gestor"],
+                "aba_origem": row_dict["aba_origem"],
+                "mes": row_dict["mes"],
+                "ano": row_dict["ano"]
+            })
+        
+        return historico
+
+    def buscar_ferias_por_periodo(self, data_inicio: str, data_fim: str) -> List[Dict]:
+        """
+        Busca férias em um período específico (quem estava em férias durante o período).
+        
+        Args:
+            data_inicio: Data início no formato YYYY-MM-DD
+            data_fim: Data fim no formato YYYY-MM-DD
+            
+        Returns:
+            Lista de funcionários com férias no período
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM funcionarios
+            WHERE (
+                (date(data_saida) >= ? AND date(data_saida) <= ?)
+                OR (date(data_retorno) >= ? AND date(data_retorno) <= ?)
+                OR (date(data_saida) <= ? AND date(data_retorno) >= ?)
+            )
+            ORDER BY data_saida DESC
+        """, (data_inicio, data_fim, data_inicio, data_fim, data_inicio, data_fim))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def buscar_ferias_por_data_saida(self, data_inicio: str, data_fim: str) -> List[Dict]:
+        """
+        Busca férias onde a DATA DE SAÍDA está dentro do período.
+        
+        Args:
+            data_inicio: Data início no formato YYYY-MM-DD
+            data_fim: Data fim no formato YYYY-MM-DD
+            
+        Returns:
+            Lista de funcionários que saem de férias no período
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM funcionarios
+            WHERE date(data_saida) >= ? AND date(data_saida) <= ?
+            ORDER BY data_saida ASC
+        """, (data_inicio, data_fim))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def buscar_ferias_por_data_retorno(self, data_inicio: str, data_fim: str) -> List[Dict]:
+        """
+        Busca férias onde a DATA DE RETORNO está dentro do período.
+        
+        Args:
+            data_inicio: Data início no formato YYYY-MM-DD
+            data_fim: Data fim no formato YYYY-MM-DD
+            
+        Returns:
+            Lista de funcionários que retornam de férias no período
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM funcionarios
+            WHERE date(data_retorno) >= ? AND date(data_retorno) <= ?
+            ORDER BY data_retorno ASC
+        """, (data_inicio, data_fim))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def buscar_estatisticas_por_unidade(self) -> List[Dict]:
+        """
+        Busca estatísticas de férias agrupadas por unidade.
+        
+        Returns:
+            Lista com unidade e total de registros
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT unidade, COUNT(*) as total
+            FROM funcionarios
+            WHERE unidade IS NOT NULL AND unidade != ''
+            GROUP BY unidade
+            ORDER BY total DESC
+        """)
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def buscar_funcionarios_por_unidade(self, unidade: str) -> List[Dict]:
+        """
+        Busca todos os funcionários de uma unidade específica.
+        
+        Args:
+            unidade: Nome da unidade
+            
+        Returns:
+            Lista de funcionários
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM funcionarios
+            WHERE unidade = ?
+            ORDER BY data_saida DESC
+        """, (unidade,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def buscar_estatisticas_gerais(self) -> Dict:
+        """
+        Busca estatísticas gerais do sistema.
+        
+        Returns:
+            Dicionário com estatísticas
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Total de registros
+        cursor.execute("SELECT COUNT(*) as total FROM funcionarios")
+        total_registros = cursor.fetchone()["total"]
+        
+        # Funcionários únicos
+        cursor.execute("SELECT COUNT(DISTINCT nome) as total FROM funcionarios WHERE nome IS NOT NULL AND nome != ''")
+        funcionarios_unicos = cursor.fetchone()["total"]
+        
+        # Total de unidades
+        cursor.execute("SELECT COUNT(DISTINCT unidade) as total FROM funcionarios WHERE unidade IS NOT NULL AND unidade != ''")
+        total_unidades = cursor.fetchone()["total"]
+        
+        # Total de abas
+        cursor.execute("SELECT COUNT(*) as total FROM abas")
+        total_abas = cursor.fetchone()["total"]
+        
+        conn.close()
+        
+        return {
+            "total_registros": total_registros,
+            "funcionarios_unicos": funcionarios_unicos,
+            "total_unidades": total_unidades,
+            "total_abas": total_abas
+        }
+
+    def buscar_estatisticas_por_ano(self) -> List[Dict]:
+        """
+        Busca estatísticas de férias por ano.
+        
+        Returns:
+            Lista com ano e total de registros
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT ano, COUNT(*) as total
+            FROM funcionarios
+            WHERE ano IS NOT NULL AND ano > 0
+            GROUP BY ano
+            ORDER BY ano DESC
+        """)
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def buscar_ranking_ferias(self, limite: int = 10) -> List[Dict]:
+        """
+        Busca ranking de funcionários com mais períodos de férias.
+        
+        Args:
+            limite: Número máximo de resultados
+            
+        Returns:
+            Lista com nome e total de períodos
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT nome, COUNT(*) as total
+            FROM funcionarios
+            WHERE nome IS NOT NULL AND nome != ''
+            GROUP BY nome
+            ORDER BY total DESC
+            LIMIT ?
+        """, (limite,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def buscar_estatisticas_por_gestor(self, limite: int = 10) -> List[Dict]:
+        """
+        Busca estatísticas de férias por gestor.
+        
+        Args:
+            limite: Número máximo de resultados
+            
+        Returns:
+            Lista com gestor e total de subordinados em férias
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT gestor, COUNT(*) as total
+            FROM funcionarios
+            WHERE gestor IS NOT NULL AND gestor != ''
+            GROUP BY gestor
+            ORDER BY total DESC
+            LIMIT ?
+        """, (limite,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def buscar_funcionarios_por_gestor(self, gestor: str, ano: int = None, mes: int = None) -> List[Dict]:
+        """
+        Busca todos os funcionários de um gestor específico, com filtros opcionais.
+        
+        Args:
+            gestor: Nome do gestor
+            ano: Ano para filtrar (opcional)
+            mes: Mês para filtrar (opcional)
+            
+        Returns:
+            Lista de funcionários do gestor
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Monta a cláusula WHERE
+        where_clauses = ["gestor = ?"]
+        params = [gestor]
+        
+        if ano:
+            where_clauses.append("ano = ?")
+            params.append(ano)
+        
+        if mes:
+            where_clauses.append("mes = ?")
+            params.append(mes)
+        
+        where_sql = " AND ".join(where_clauses)
+        
+        cursor.execute(f"""
+            SELECT * FROM funcionarios
+            WHERE {where_sql}
+            ORDER BY data_saida DESC
+        """, params)
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def buscar_anos_disponiveis(self) -> List[int]:
+        """
+        Busca lista de anos disponíveis nos dados.
+        
+        Returns:
+            Lista de anos ordenados
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT DISTINCT ano
+            FROM funcionarios
+            WHERE ano IS NOT NULL AND ano > 0
+            ORDER BY ano DESC
+        """)
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [row["ano"] for row in rows]
+
+    def buscar_ferias_por_mes(self, ano: int) -> List[Dict]:
+        """
+        Busca total de férias por mês em um ano específico.
+        
+        Args:
+            ano: Ano para buscar
+            
+        Returns:
+            Lista com mês e total
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT mes, COUNT(*) as total
+            FROM funcionarios
+            WHERE ano = ? AND mes IS NOT NULL AND mes > 0
+            GROUP BY mes
+            ORDER BY mes
+        """, (ano,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    # ==================== RELATÓRIOS FILTRADOS ====================
+
+    def buscar_estatisticas_filtradas(self, ano: int = None, mes: int = None) -> Dict:
+        """
+        Busca estatísticas gerais filtradas por ano e/ou mês.
+        
+        Args:
+            ano: Ano para filtrar (opcional)
+            mes: Mês para filtrar (opcional)
+            
+        Returns:
+            Dicionário com estatísticas filtradas
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Monta a cláusula WHERE
+        where_clauses = []
+        params = []
+        
+        if ano:
+            where_clauses.append("ano = ?")
+            params.append(ano)
+        
+        if mes:
+            where_clauses.append("mes = ?")
+            params.append(mes)
+        
+        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        
+        # Total de registros
+        cursor.execute(f"SELECT COUNT(*) as total FROM funcionarios WHERE {where_sql}", params)
+        total_registros = cursor.fetchone()["total"]
+        
+        # Funcionários únicos
+        cursor.execute(f"""
+            SELECT COUNT(DISTINCT nome) as total 
+            FROM funcionarios 
+            WHERE {where_sql} AND nome IS NOT NULL AND nome != ''
+        """, params)
+        funcionarios_unicos = cursor.fetchone()["total"]
+        
+        # Total de unidades
+        cursor.execute(f"""
+            SELECT COUNT(DISTINCT unidade) as total 
+            FROM funcionarios 
+            WHERE {where_sql} AND unidade IS NOT NULL AND unidade != ''
+        """, params)
+        total_unidades = cursor.fetchone()["total"]
+        
+        # Total de gestores
+        cursor.execute(f"""
+            SELECT COUNT(DISTINCT gestor) as total 
+            FROM funcionarios 
+            WHERE {where_sql} AND gestor IS NOT NULL AND gestor != ''
+        """, params)
+        total_gestores = cursor.fetchone()["total"]
+        
+        conn.close()
+        
+        return {
+            "total_registros": total_registros,
+            "funcionarios_unicos": funcionarios_unicos,
+            "total_unidades": total_unidades,
+            "total_gestores": total_gestores
+        }
+
+    def buscar_ranking_ferias_filtrado(self, limite: int = 10, ano: int = None, mes: int = None) -> List[Dict]:
+        """
+        Busca ranking de funcionários com mais períodos de férias, filtrado por ano/mês.
+        
+        Args:
+            limite: Número máximo de resultados
+            ano: Ano para filtrar (opcional)
+            mes: Mês para filtrar (opcional)
+            
+        Returns:
+            Lista com nome e total de períodos
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Monta a cláusula WHERE
+        where_clauses = ["nome IS NOT NULL", "nome != ''"]
+        params = []
+        
+        if ano:
+            where_clauses.append("ano = ?")
+            params.append(ano)
+        
+        if mes:
+            where_clauses.append("mes = ?")
+            params.append(mes)
+        
+        where_sql = " AND ".join(where_clauses)
+        params.append(limite)
+        
+        cursor.execute(f"""
+            SELECT nome, COUNT(*) as total
+            FROM funcionarios
+            WHERE {where_sql}
+            GROUP BY nome
+            ORDER BY total DESC
+            LIMIT ?
+        """, params)
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def buscar_estatisticas_por_gestor_filtrado(self, limite: int = 10, ano: int = None, mes: int = None) -> List[Dict]:
+        """
+        Busca estatísticas de férias por gestor, filtrado por ano/mês.
+        
+        Args:
+            limite: Número máximo de resultados
+            ano: Ano para filtrar (opcional)
+            mes: Mês para filtrar (opcional)
+            
+        Returns:
+            Lista com gestor e total de subordinados em férias
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Monta a cláusula WHERE
+        where_clauses = ["gestor IS NOT NULL", "gestor != ''"]
+        params = []
+        
+        if ano:
+            where_clauses.append("ano = ?")
+            params.append(ano)
+        
+        if mes:
+            where_clauses.append("mes = ?")
+            params.append(mes)
+        
+        where_sql = " AND ".join(where_clauses)
+        params.append(limite)
+        
+        cursor.execute(f"""
+            SELECT gestor, COUNT(*) as total
+            FROM funcionarios
+            WHERE {where_sql}
+            GROUP BY gestor
+            ORDER BY total DESC
+            LIMIT ?
+        """, params)
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def buscar_estatisticas_por_unidade_filtrado(self, limite: int = 10, ano: int = None, mes: int = None) -> List[Dict]:
+        """
+        Busca estatísticas de férias por unidade, filtrado por ano/mês.
+        
+        Args:
+            limite: Número máximo de resultados
+            ano: Ano para filtrar (opcional)
+            mes: Mês para filtrar (opcional)
+            
+        Returns:
+            Lista com unidade e total de férias
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Monta a cláusula WHERE
+        where_clauses = ["unidade IS NOT NULL", "unidade != ''"]
+        params = []
+        
+        if ano:
+            where_clauses.append("ano = ?")
+            params.append(ano)
+        
+        if mes:
+            where_clauses.append("mes = ?")
+            params.append(mes)
+        
+        where_sql = " AND ".join(where_clauses)
+        params.append(limite)
+        
+        cursor.execute(f"""
+            SELECT unidade, COUNT(*) as total
+            FROM funcionarios
+            WHERE {where_sql}
+            GROUP BY unidade
+            ORDER BY total DESC
+            LIMIT ?
+        """, params)
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+

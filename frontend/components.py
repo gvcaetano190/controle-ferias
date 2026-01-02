@@ -51,7 +51,7 @@ def exibir_tabela_funcionarios(funcionarios: List[Dict], mostrar_acessos: bool =
             "Saída": formatar_data(f.get("data_saida", "")),
             "Retorno": formatar_data(f.get("data_retorno", "")),
             "Gestor": f.get("gestor", ""),
-            "Unidade": f.get("unidade", ""),
+            "RH Solicitante": f.get("unidade", ""),
         }
         
         if mostrar_acessos and "acessos" in f:

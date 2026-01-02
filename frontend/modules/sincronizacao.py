@@ -84,7 +84,7 @@ def render(database):
         label_botao = "📊 Status Scheduler" if not st.session_state['mostrar_status_scheduler'] else "❌ Fechar"
         tipo_botao = "primary" if not st.session_state['mostrar_status_scheduler'] else "secondary"
         
-        if st.button(label_botao, help="Verificar se o scheduler está rodando", use_container_width=True, type=tipo_botao):
+        if st.button(label_botao, help="Verificar se o scheduler está rodando", width="stretch", type=tipo_botao):
             st.session_state['mostrar_status_scheduler'] = not st.session_state['mostrar_status_scheduler']
             st.rerun()
     

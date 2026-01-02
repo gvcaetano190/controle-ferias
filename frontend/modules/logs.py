@@ -326,7 +326,7 @@ def render():
         # Botão de atualização manual
         col_btn1, col_btn2 = st.columns([1, 4])
         with col_btn1:
-            if st.button("🔄 Atualizar Agora", key="btn_atualizar_arquivo", use_container_width=True):
+            if st.button("🔄 Atualizar Agora", key="btn_atualizar_arquivo", width="stretch"):
                 st.rerun()
         
         # Container para o conteúdo do log (permite atualização dinâmica)
