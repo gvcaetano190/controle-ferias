@@ -220,12 +220,15 @@ def render(database):
             
             # Seleção de pessoa (referência)
             if not is_lote:
-                # No modo individual, permite selecionar pessoa voltando como referência
-                nomes_disponiveis = ["Nenhuma"] + [p['nome'] for p in voltando_amanha]
+                # No modo individual, permite selecionar qualquer funcionário como referência
+                # Busca todos os funcionários únicos
+                todos_funcionarios = database.buscar_funcionarios()
+                nomes_unicos = sorted(set(p['nome'] for p in todos_funcionarios if p.get('nome')))
+                nomes_disponiveis = ["Nenhuma"] + nomes_unicos
                 pessoa_selecionada = st.selectbox(
-                    f"👤 Pessoa voltando {texto_voltando.lower()} (Referência):",
+                    "👤 Funcionário (Referência):",
                     nomes_disponiveis,
-                    help="Selecione uma pessoa como referência (opcional)"
+                    help="Selecione um funcionário como referência (opcional)"
                 )
                 if pessoa_selecionada != "Nenhuma":
                     pessoas_alvo = [{"nome": pessoa_selecionada, "referencia": f"Retorno Férias - {pessoa_selecionada}"} for _ in range(quantidade)]
@@ -351,8 +354,32 @@ def render(database):
                     del st.session_state["links_logged"]
                 st.rerun()
             
+            # Função para criar botão de copiar com JavaScript
+            def botao_copiar(texto: str, key: str, label: str = "📋"):
+                """Cria um botão que copia texto para o clipboard usando JavaScript."""
+                import streamlit.components.v1 as components
+                
+                # Escapa aspas e caracteres especiais
+                texto_escaped = texto.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
+                
+                html_code = f"""
+                <button onclick="navigator.clipboard.writeText('{texto_escaped}').then(() => {{
+                    this.innerHTML = '✅';
+                    setTimeout(() => {{ this.innerHTML = '{label}'; }}, 1500);
+                }}).catch(err => {{
+                    this.innerHTML = '❌';
+                    setTimeout(() => {{ this.innerHTML = '{label}'; }}, 1500);
+                }});" 
+                style="background-color: #262730; color: white; border: 1px solid #4a4a5a; 
+                       padding: 5px 15px; border-radius: 5px; cursor: pointer; font-size: 14px;
+                       transition: all 0.2s ease;">
+                    {label}
+                </button>
+                """
+                components.html(html_code, height=40)
+            
             # Exibição em Cartões
-            for item in sucessos:
+            for idx, item in enumerate(sucessos):
                 # Define cor e ícone base
                 bg_color = "#f0f2f6"
                 icon = "👤" if is_lote or item.get('nome_pessoa') else "🔑"
@@ -370,11 +397,19 @@ def render(database):
                     with c1:
                         if item.get('gestor_pessoa'):
                             st.caption(f"👔 Gestor: {item['gestor_pessoa']}")
-                        st.caption("Senha definida neste link:")
-                        st.code(item['senha_usada'], language=None)
+                        st.caption("🔐 Senha definida neste link:")
+                        col_senha, col_btn_senha = st.columns([4, 1])
+                        with col_senha:
+                            st.code(item['senha_usada'], language=None)
+                        with col_btn_senha:
+                            botao_copiar(item['senha_usada'], f"senha_{idx}", "📋 Copiar")
                     with c2:
-                        st.caption("Link OneTimeSecret:")
-                        st.code(item['link'], language=None)
+                        st.caption("🔗 Link OneTimeSecret:")
+                        col_link, col_btn_link = st.columns([4, 1])
+                        with col_link:
+                            st.code(item['link'], language=None)
+                        with col_btn_link:
+                            botao_copiar(item['link'], f"link_{idx}", "📋 Copiar")
                     st.markdown("---")
             
             # Exportação em bloco

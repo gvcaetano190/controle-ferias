@@ -25,6 +25,72 @@ def _eh_dia_util():
     """Verifica se hoje é dia útil (segunda a sexta)."""
     return datetime.now().weekday() < 5  # 0=segunda, 4=sexta, 5=sábado, 6=domingo
 
+
+def _get_controle_file():
+    """Retorna o caminho do arquivo de controle de jobs."""
+    return Path(settings.DATA_DIR) / ".jobs_executados.txt"
+
+
+def _verificar_job_executado(job_nome: str) -> bool:
+    """
+    Verifica se um job já foi executado hoje.
+    
+    Args:
+        job_nome: Nome do job (ex: 'manha', 'tarde', 'sync', 'ferias')
+    
+    Returns:
+        True se já foi executado hoje, False caso contrário
+    """
+    controle_file = _get_controle_file()
+    hoje_str = datetime.now().strftime('%Y-%m-%d')
+    
+    if not controle_file.exists():
+        return False
+    
+    try:
+        conteudo = controle_file.read_text().strip()
+        if conteudo.startswith(hoje_str):
+            partes = conteudo.split("|")
+            if len(partes) > 1:
+                jobs_executados = set(partes[1].split(","))
+                return job_nome in jobs_executados
+    except:
+        pass
+    
+    return False
+
+
+def _marcar_job_executado(job_nome: str):
+    """
+    Marca um job como executado hoje.
+    
+    Args:
+        job_nome: Nome do job (ex: 'manha', 'tarde', 'sync', 'ferias')
+    """
+    controle_file = _get_controle_file()
+    hoje_str = datetime.now().strftime('%Y-%m-%d')
+    
+    # Lê jobs já executados hoje
+    jobs_executados = set()
+    if controle_file.exists():
+        try:
+            conteudo = controle_file.read_text().strip()
+            if conteudo.startswith(hoje_str):
+                partes = conteudo.split("|")
+                if len(partes) > 1:
+                    jobs_executados = set(partes[1].split(","))
+        except:
+            pass
+    
+    # Adiciona o novo job
+    jobs_executados.add(job_nome)
+    
+    # Salva
+    try:
+        controle_file.write_text(f"{hoje_str}|{','.join(jobs_executados)}")
+    except Exception as e:
+        print(f"   ⚠️ Erro ao salvar controle de jobs: {e}")
+
 # Tenta importar APScheduler, senão usa fallback simples
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -124,6 +190,11 @@ def job_mensagem_manha():
         print(f"\n🌅 [{datetime.now().strftime('%H:%M:%S')}] Mensagem matutina pulada (fim de semana)")
         return
     
+    # Verifica se já foi executado hoje (evita duplicação)
+    if _verificar_job_executado("manha"):
+        print(f"\n🌅 [{datetime.now().strftime('%H:%M:%S')}] Mensagem matutina já enviada hoje, pulando...")
+        return
+    
     print(f"\n🌅 [{datetime.now().strftime('%H:%M:%S')}] Enviando mensagem matutina...")
     
     try:
@@ -138,6 +209,7 @@ def job_mensagem_manha():
         
         if resultado["sucesso"]:
             print("   ✅ Mensagem matutina enviada com sucesso")
+            _marcar_job_executado("manha")
         else:
             print(f"   ❌ Erro ao enviar: {resultado['mensagem']}")
     except Exception as e:
@@ -151,6 +223,11 @@ def job_mensagem_tarde():
     
     if not _eh_dia_util():
         print(f"\n🌆 [{datetime.now().strftime('%H:%M:%S')}] Mensagem vespertina pulada (fim de semana)")
+        return
+    
+    # Verifica se já foi executado hoje (evita duplicação)
+    if _verificar_job_executado("tarde"):
+        print(f"\n🌆 [{datetime.now().strftime('%H:%M:%S')}] Mensagem vespertina já enviada hoje, pulando...")
         return
     
     print(f"\n🌆 [{datetime.now().strftime('%H:%M:%S')}] Enviando mensagem vespertina...")
@@ -167,6 +244,7 @@ def job_mensagem_tarde():
         
         if resultado["sucesso"]:
             print("   ✅ Mensagem vespertina enviada com sucesso")
+            _marcar_job_executado("tarde")
         else:
             print(f"   ❌ Erro ao enviar: {resultado['mensagem']}")
     except Exception as e:
@@ -177,6 +255,9 @@ def _verificar_e_executar_jobs_perdidos():
     """
     Verifica se há jobs que deveriam ter sido executados hoje mas foram perdidos
     (por exemplo, se o scheduler iniciou depois do horário agendado).
+    
+    Usa arquivo de controle para evitar execução duplicada (funções _verificar_job_executado
+    e _marcar_job_executado nos próprios jobs já fazem esse controle).
     """
     agora = datetime.now()
     hora_atual = agora.hour
@@ -189,42 +270,44 @@ def _verificar_e_executar_jobs_perdidos():
     print("\n🔍 Verificando jobs perdidos...")
     jobs_executados = []
     
-    # Verifica sincronização
-    if settings.SYNC_ENABLED:
+    # Verifica sincronização (não tem controle de duplicação no job_sincronizacao, então verificamos aqui)
+    if settings.SYNC_ENABLED and not _verificar_job_executado("sync"):
         hora_sync = settings.SYNC_HOUR
         min_sync = settings.SYNC_MINUTE
         if hora_atual > hora_sync or (hora_atual == hora_sync and minuto_atual > min_sync):
             print(f"   ⏰ Sincronização das {hora_sync:02d}:{min_sync:02d} foi perdida, executando agora...")
             job_sincronizacao()
+            _marcar_job_executado("sync")
             jobs_executados.append("sync")
     
     # Verifica verificação de férias (09:00)
-    if settings.EVOLUTION_ENABLED:
+    if settings.EVOLUTION_ENABLED and not _verificar_job_executado("ferias"):
         if hora_atual > 9 or (hora_atual == 9 and minuto_atual > 0):
             print(f"   ⏰ Verificação de férias das 09:00 foi perdida, executando agora...")
             job_verificar_ferias_proximas()
+            _marcar_job_executado("ferias")
             jobs_executados.append("ferias")
     
-    # Verifica mensagem matutina
-    if settings.EVOLUTION_ENABLED and settings.MENSAGEM_MANHA_ENABLED:
+    # Verifica mensagem matutina (o job já tem controle de duplicação interno)
+    if settings.EVOLUTION_ENABLED and settings.MENSAGEM_MANHA_ENABLED and not _verificar_job_executado("manha"):
         hora_manha = settings.MENSAGEM_MANHA_HOUR
         min_manha = settings.MENSAGEM_MANHA_MINUTE
         if hora_atual > hora_manha or (hora_atual == hora_manha and minuto_atual > min_manha):
             print(f"   ⏰ Mensagem matutina das {hora_manha:02d}:{min_manha:02d} foi perdida, executando agora...")
-            job_mensagem_manha()
+            job_mensagem_manha()  # O job já marca como executado se for bem-sucedido
             jobs_executados.append("manha")
     
-    # Verifica mensagem vespertina
-    if settings.EVOLUTION_ENABLED and settings.MENSAGEM_TARDE_ENABLED:
+    # Verifica mensagem vespertina (o job já tem controle de duplicação interno)
+    if settings.EVOLUTION_ENABLED and settings.MENSAGEM_TARDE_ENABLED and not _verificar_job_executado("tarde"):
         hora_tarde = settings.MENSAGEM_TARDE_HOUR
         min_tarde = settings.MENSAGEM_TARDE_MINUTE
         if hora_atual > hora_tarde or (hora_atual == hora_tarde and minuto_atual > min_tarde):
             print(f"   ⏰ Mensagem vespertina das {hora_tarde:02d}:{min_tarde:02d} foi perdida, executando agora...")
-            job_mensagem_tarde()
+            job_mensagem_tarde()  # O job já marca como executado se for bem-sucedido
             jobs_executados.append("tarde")
     
     if jobs_executados:
-        print(f"   ✅ {len(jobs_executados)} job(s) perdido(s) executado(s): {', '.join(jobs_executados)}")
+        print(f"   ✅ {len(jobs_executados)} job(s) perdido(s) processado(s): {', '.join(jobs_executados)}")
     else:
         print("   ✅ Nenhum job perdido")
 

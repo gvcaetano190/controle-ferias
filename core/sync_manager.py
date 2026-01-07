@@ -320,7 +320,12 @@ class SyncManager:
             return "BLOQUEADO"
         if valor_str in ["LIBERADO", "LIB"]:
             return "LIBERADO"
-        if valor_str in ["N/P", "N\\A", "NA", "N/A", "NP", "-"]:
+        
+        # Carrega padrões de "sem acesso" da configuração
+        padroes_sem_acesso_str = settings.PADROES_SEM_ACESSO if hasattr(settings, 'PADROES_SEM_ACESSO') else "N/P,N\\A,NA,N/A,NP,-,NB"
+        padroes_sem_acesso = [p.strip().upper() for p in padroes_sem_acesso_str.split(",")]
+        
+        if valor_str in padroes_sem_acesso:
             return "NA"
         
         return "PENDENTE"

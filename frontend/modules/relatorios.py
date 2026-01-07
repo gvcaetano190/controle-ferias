@@ -29,10 +29,12 @@ def render(database):
         return
     
     # Tabs de relatórios
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "👤 Por Funcionário",
         "📅 Por Período",
         "🧑‍💼 Por Gestor",
+        "🔙 Retorno de Férias",
+        "🚀 Saída de Férias",
         "📈 Estatísticas",
         "📆 Calendário Anual"
     ])
@@ -47,9 +49,15 @@ def render(database):
         _render_relatorio_gestor(database)
     
     with tab4:
-        _render_estatisticas(database)
+        _render_relatorio_retorno(database)
     
     with tab5:
+        _render_relatorio_saida(database)
+    
+    with tab6:
+        _render_estatisticas(database)
+    
+    with tab7:
         _render_calendario_anual(database)
 
 
@@ -662,3 +670,482 @@ def _render_calendario_anual(database):
     if dados_mes:
         mes_pico = max(dados_mes, key=lambda x: x["total"])
         st.info(f"📊 **Mês com mais férias:** {meses_pt.get(mes_pico['mes'], mes_pico['mes'])} com {mes_pico['total']} registro(s)")
+
+
+def _render_relatorio_retorno(database):
+    """Relatório de retorno de férias com status de acessos."""
+    st.subheader("🔙 Relatório de Retorno de Férias")
+    
+    st.info("💡 Visualize funcionários que retornaram de férias e verifique se todos os acessos foram liberados.")
+    
+    # Configuração de data
+    hoje = datetime.now()
+    ano_atual = hoje.year
+    mes_atual = hoje.month
+    
+    # Mês passado
+    if mes_atual == 1:
+        mes_passado = 12
+        ano_mes_passado = ano_atual - 1
+    else:
+        mes_passado = mes_atual - 1
+        ano_mes_passado = ano_atual
+    
+    meses_nomes = {
+        1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+        5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+        9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+    }
+    
+    # Opções de filtro
+    opcoes_ciclo = [
+        f"Último Ciclo ({meses_nomes[mes_passado]}/{ano_mes_passado} - {meses_nomes[mes_atual]}/{ano_atual})",
+        f"Mês Atual ({meses_nomes[mes_atual]}/{ano_atual})",
+        f"Mês Passado ({meses_nomes[mes_passado]}/{ano_mes_passado})",
+        "Todos os períodos",
+        "Período personalizado"
+    ]
+    
+    col_filtro1, col_filtro2 = st.columns([2, 3])
+    
+    with col_filtro1:
+        filtro_ciclo = st.selectbox(
+            "📅 Filtrar por ciclo/período:",
+            opcoes_ciclo,
+            index=0,
+            key="filtro_retorno_ciclo"
+        )
+    
+    # Determina parâmetros de filtro
+    data_inicio, data_fim = None, None
+    
+    if "Último Ciclo" in filtro_ciclo:
+        data_inicio = datetime(ano_mes_passado, mes_passado, 1)
+        if mes_atual == 12:
+            data_fim = datetime(ano_atual + 1, 1, 1) - timedelta(days=1)
+        else:
+            data_fim = datetime(ano_atual, mes_atual + 1, 1) - timedelta(days=1)
+    elif "Mês Atual" in filtro_ciclo:
+        data_inicio = datetime(ano_atual, mes_atual, 1)
+        if mes_atual == 12:
+            data_fim = datetime(ano_atual + 1, 1, 1) - timedelta(days=1)
+        else:
+            data_fim = datetime(ano_atual, mes_atual + 1, 1) - timedelta(days=1)
+    elif "Mês Passado" in filtro_ciclo:
+        data_inicio = datetime(ano_mes_passado, mes_passado, 1)
+        data_fim = datetime(ano_atual, mes_atual, 1) - timedelta(days=1)
+    elif "Período personalizado" in filtro_ciclo:
+        with col_filtro2:
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                data_inicio = st.date_input(
+                    "Data início (retorno):",
+                    value=datetime(ano_mes_passado, mes_passado, 1),
+                    key="retorno_data_inicio"
+                )
+            with col_d2:
+                data_fim = st.date_input(
+                    "Data fim (retorno):",
+                    value=hoje,
+                    key="retorno_data_fim"
+                )
+    
+    # Busca funcionários que retornaram no período
+    funcionarios = database.buscar_funcionarios()
+    
+    # Filtra por data de retorno
+    retornados = []
+    for f in funcionarios:
+        if not f.get('data_retorno'):
+            continue
+        
+        try:
+            data_retorno = datetime.strptime(f['data_retorno'], '%Y-%m-%d')
+        except:
+            continue
+        
+        # Só mostra quem já retornou (data_retorno <= hoje)
+        if data_retorno > hoje:
+            continue
+        
+        # Aplica filtro de período se existir
+        if data_inicio and data_fim:
+            if isinstance(data_inicio, datetime):
+                d_inicio = data_inicio
+                d_fim = data_fim
+            else:
+                d_inicio = datetime.combine(data_inicio, datetime.min.time())
+                d_fim = datetime.combine(data_fim, datetime.max.time())
+            
+            if not (d_inicio <= data_retorno <= d_fim):
+                continue
+        
+        retornados.append(f)
+    
+    if not retornados:
+        st.warning("Nenhum funcionário encontrado com retorno no período selecionado.")
+        return
+    
+    # Analisa status dos acessos
+    sistemas = ["AD", "VPN", "Gmail", "Admin", "Metrics", "TOTVS"]
+    
+    # Contadores
+    total_liberados = 0
+    total_pendentes = 0
+    
+    dados_tabela = []
+    for f in retornados:
+        acessos = f.get('acessos', {})
+        
+        # Verifica se todos os acessos estão liberados ou NA
+        acessos_ok = True
+        status_acessos = {}
+        
+        for sistema in sistemas:
+            status = acessos.get(sistema, 'PENDENTE')
+            status_acessos[sistema] = status
+            if status == 'BLOQUEADO':
+                acessos_ok = False
+        
+        if acessos_ok:
+            total_liberados += 1
+            status_geral = "✅ Liberado"
+        else:
+            total_pendentes += 1
+            status_geral = "🔴 Bloqueado"
+        
+        dados_tabela.append({
+            "Nome": f.get('nome', ''),
+            "Retorno": f.get('data_retorno', ''),
+            "Saída": f.get('data_saida', ''),
+            "RH Solicitante": f.get('unidade', ''),
+            "Gestor": f.get('gestor', ''),
+            "Status Geral": status_geral,
+            **{s: status_acessos.get(s, 'NB') for s in sistemas}
+        })
+    
+    # Métricas
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("📊 Total Retornados", len(retornados))
+    with col2:
+        st.metric("✅ Acessos Liberados", total_liberados)
+    with col3:
+        st.metric("🔴 Acessos Pendentes", total_pendentes)
+    
+    st.divider()
+    
+    # Filtro de status
+    filtro_status = st.radio(
+        "Filtrar por status:",
+        ["Todos", "✅ Apenas Liberados", "🔴 Apenas com Bloqueio"],
+        horizontal=True,
+        key="filtro_status_retorno"
+    )
+    
+    if filtro_status == "✅ Apenas Liberados":
+        dados_tabela = [d for d in dados_tabela if "✅" in d["Status Geral"]]
+    elif filtro_status == "🔴 Apenas com Bloqueio":
+        dados_tabela = [d for d in dados_tabela if "🔴" in d["Status Geral"]]
+    
+    if not dados_tabela:
+        st.info("Nenhum registro encontrado com o filtro selecionado.")
+        return
+    
+    # Formata datas
+    for d in dados_tabela:
+        try:
+            if d["Retorno"]:
+                d["Retorno"] = datetime.strptime(d["Retorno"], '%Y-%m-%d').strftime('%d/%m/%Y')
+            if d["Saída"]:
+                d["Saída"] = datetime.strptime(d["Saída"], '%Y-%m-%d').strftime('%d/%m/%Y')
+        except:
+            pass
+    
+    # Tabela
+    df = pd.DataFrame(dados_tabela)
+    
+    # Estiliza status dos acessos
+    def estilizar_acesso(val):
+        if val == "LIBERADO":
+            return "🟢"
+        elif val == "BLOQUEADO":
+            return "🔴"
+        elif val in ["NA", "NB", "NP"]:
+            return "⚪"
+        else:
+            return "⬜"
+    
+    for sistema in sistemas:
+        if sistema in df.columns:
+            df[sistema] = df[sistema].apply(estilizar_acesso)
+    
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    
+    # Exportar CSV
+    if st.button("📥 Exportar CSV", key="export_retorno"):
+        csv = df.to_csv(index=False)
+        st.download_button(
+            "📄 Baixar CSV",
+            csv,
+            f"retorno_ferias_{datetime.now().strftime('%Y%m%d')}.csv",
+            "text/csv",
+            key="download_retorno"
+        )
+
+
+def _render_relatorio_saida(database):
+    """Relatório de saída de férias com status de acessos."""
+    st.subheader("🚀 Relatório de Saída de Férias")
+    
+    st.info("💡 Visualize funcionários que saíram de férias e verifique se todos os acessos foram bloqueados.")
+    
+    # Configuração de data
+    hoje = datetime.now()
+    ano_atual = hoje.year
+    mes_atual = hoje.month
+    
+    # Mês passado
+    if mes_atual == 1:
+        mes_passado = 12
+        ano_mes_passado = ano_atual - 1
+    else:
+        mes_passado = mes_atual - 1
+        ano_mes_passado = ano_atual
+    
+    meses_nomes = {
+        1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+        5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+        9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+    }
+    
+    # Opções de filtro
+    opcoes_ciclo = [
+        f"Último Ciclo ({meses_nomes[mes_passado]}/{ano_mes_passado} - {meses_nomes[mes_atual]}/{ano_atual})",
+        f"Mês Atual ({meses_nomes[mes_atual]}/{ano_atual})",
+        f"Mês Passado ({meses_nomes[mes_passado]}/{ano_mes_passado})",
+        "Todos os períodos",
+        "Período personalizado"
+    ]
+    
+    col_filtro1, col_filtro2 = st.columns([2, 3])
+    
+    with col_filtro1:
+        filtro_ciclo = st.selectbox(
+            "📅 Filtrar por ciclo/período:",
+            opcoes_ciclo,
+            index=0,
+            key="filtro_saida_ciclo"
+        )
+    
+    # Determina parâmetros de filtro
+    data_inicio, data_fim = None, None
+    
+    if "Último Ciclo" in filtro_ciclo:
+        data_inicio = datetime(ano_mes_passado, mes_passado, 1)
+        if mes_atual == 12:
+            data_fim = datetime(ano_atual + 1, 1, 1) - timedelta(days=1)
+        else:
+            data_fim = datetime(ano_atual, mes_atual + 1, 1) - timedelta(days=1)
+    elif "Mês Atual" in filtro_ciclo:
+        data_inicio = datetime(ano_atual, mes_atual, 1)
+        if mes_atual == 12:
+            data_fim = datetime(ano_atual + 1, 1, 1) - timedelta(days=1)
+        else:
+            data_fim = datetime(ano_atual, mes_atual + 1, 1) - timedelta(days=1)
+    elif "Mês Passado" in filtro_ciclo:
+        data_inicio = datetime(ano_mes_passado, mes_passado, 1)
+        data_fim = datetime(ano_atual, mes_atual, 1) - timedelta(days=1)
+    elif "Período personalizado" in filtro_ciclo:
+        with col_filtro2:
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                data_inicio = st.date_input(
+                    "Data início (saída):",
+                    value=datetime(ano_mes_passado, mes_passado, 1),
+                    key="saida_data_inicio"
+                )
+            with col_d2:
+                data_fim = st.date_input(
+                    "Data fim (saída):",
+                    value=hoje,
+                    key="saida_data_fim"
+                )
+    
+    # Busca funcionários
+    funcionarios = database.buscar_funcionarios()
+    
+    # Filtra por data de saída
+    saidas = []
+    for f in funcionarios:
+        if not f.get('data_saida'):
+            continue
+        
+        try:
+            data_saida = datetime.strptime(f['data_saida'], '%Y-%m-%d')
+        except:
+            continue
+        
+        # Aplica filtro de período se existir
+        if data_inicio and data_fim:
+            if isinstance(data_inicio, datetime):
+                d_inicio = data_inicio
+                d_fim = data_fim
+            else:
+                d_inicio = datetime.combine(data_inicio, datetime.min.time())
+                d_fim = datetime.combine(data_fim, datetime.max.time())
+            
+            if not (d_inicio <= data_saida <= d_fim):
+                continue
+        
+        saidas.append(f)
+    
+    if not saidas:
+        st.warning("Nenhum funcionário encontrado com saída no período selecionado.")
+        return
+    
+    # Analisa status dos acessos
+    sistemas = ["AD", "VPN", "Gmail", "Admin", "Metrics", "TOTVS"]
+    
+    # Contadores
+    total_bloqueados = 0
+    total_pendentes = 0
+    total_em_ferias = 0
+    
+    dados_tabela = []
+    for f in saidas:
+        acessos = f.get('acessos', {})
+        
+        # Verifica se está em férias atualmente
+        data_retorno = None
+        try:
+            data_retorno = datetime.strptime(f['data_retorno'], '%Y-%m-%d') if f.get('data_retorno') else None
+        except:
+            pass
+        
+        em_ferias = False
+        if data_retorno and data_retorno >= hoje:
+            em_ferias = True
+            total_em_ferias += 1
+        
+        # Verifica se todos os acessos estão bloqueados ou NA
+        acessos_ok = True
+        status_acessos = {}
+        
+        for sistema in sistemas:
+            status = acessos.get(sistema, 'PENDENTE')
+            status_acessos[sistema] = status
+            if status == 'LIBERADO' and em_ferias:
+                acessos_ok = False
+            elif status == 'PENDENTE':
+                acessos_ok = False
+        
+        if acessos_ok:
+            total_bloqueados += 1
+            status_geral = "✅ Bloqueado" if em_ferias else "✅ OK"
+        else:
+            total_pendentes += 1
+            status_geral = "⚠️ Pendente" if em_ferias else "⚠️ Verificar"
+        
+        # Adiciona indicador de em férias
+        if em_ferias:
+            status_geral = "🏖️ " + status_geral
+        
+        dados_tabela.append({
+            "Nome": f.get('nome', ''),
+            "Saída": f.get('data_saida', ''),
+            "Retorno": f.get('data_retorno', ''),
+            "Em Férias": "Sim" if em_ferias else "Não",
+            "RH Solicitante": f.get('unidade', ''),
+            "Gestor": f.get('gestor', ''),
+            "Status Geral": status_geral,
+            **{s: status_acessos.get(s, 'NB') for s in sistemas}
+        })
+    
+    # Métricas
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("📊 Total Saídas", len(saidas))
+    with col2:
+        st.metric("🏖️ Em Férias Agora", total_em_ferias)
+    with col3:
+        st.metric("✅ Acessos OK", total_bloqueados)
+    with col4:
+        st.metric("⚠️ Acessos Pendentes", total_pendentes)
+    
+    st.divider()
+    
+    # Filtros
+    col_f1, col_f2 = st.columns(2)
+    
+    with col_f1:
+        filtro_status = st.radio(
+            "Filtrar por status:",
+            ["Todos", "✅ Apenas OK", "⚠️ Apenas Pendentes"],
+            horizontal=True,
+            key="filtro_status_saida"
+        )
+    
+    with col_f2:
+        filtro_ferias = st.radio(
+            "Filtrar por situação:",
+            ["Todos", "🏖️ Em férias agora", "📋 Já retornaram"],
+            horizontal=True,
+            key="filtro_ferias_saida"
+        )
+    
+    # Aplica filtros
+    if filtro_status == "✅ Apenas OK":
+        dados_tabela = [d for d in dados_tabela if "✅" in d["Status Geral"]]
+    elif filtro_status == "⚠️ Apenas Pendentes":
+        dados_tabela = [d for d in dados_tabela if "⚠️" in d["Status Geral"]]
+    
+    if filtro_ferias == "🏖️ Em férias agora":
+        dados_tabela = [d for d in dados_tabela if d["Em Férias"] == "Sim"]
+    elif filtro_ferias == "📋 Já retornaram":
+        dados_tabela = [d for d in dados_tabela if d["Em Férias"] == "Não"]
+    
+    if not dados_tabela:
+        st.info("Nenhum registro encontrado com os filtros selecionados.")
+        return
+    
+    # Formata datas
+    for d in dados_tabela:
+        try:
+            if d["Saída"]:
+                d["Saída"] = datetime.strptime(d["Saída"], '%Y-%m-%d').strftime('%d/%m/%Y')
+            if d["Retorno"]:
+                d["Retorno"] = datetime.strptime(d["Retorno"], '%Y-%m-%d').strftime('%d/%m/%Y')
+        except:
+            pass
+    
+    # Tabela
+    df = pd.DataFrame(dados_tabela)
+    
+    # Estiliza status dos acessos
+    def estilizar_acesso(val):
+        if val == "LIBERADO":
+            return "🟢"
+        elif val == "BLOQUEADO":
+            return "🔴"
+        elif val in ["NA", "NB", "NP"]:
+            return "⚪"
+        else:
+            return "⬜"
+    
+    for sistema in sistemas:
+        if sistema in df.columns:
+            df[sistema] = df[sistema].apply(estilizar_acesso)
+    
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    
+    # Exportar CSV
+    if st.button("📥 Exportar CSV", key="export_saida"):
+        csv = df.to_csv(index=False)
+        st.download_button(
+            "📄 Baixar CSV",
+            csv,
+            f"saida_ferias_{datetime.now().strftime('%Y%m%d')}.csv",
+            "text/csv",
+            key="download_saida"
+        )

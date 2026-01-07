@@ -55,7 +55,9 @@ class Settings:
             "NOTIFY_FERIAS_DIAS_ANTES": "1",
             "API_HOST": "0.0.0.0",
             "API_PORT": "8000",
-            "SISTEMAS_ACESSO": ["AD PRIN", "VPN", "Gmail", "Admin", "Metrics", "TOTVS"]
+            "SISTEMAS_ACESSO": ["AD PRIN", "VPN", "Gmail", "Admin", "Metrics", "TOTVS"],
+            # Padrões que indicam que a pessoa NÃO TEM acesso à ferramenta (será mapeado para "NA")
+            "PADROES_SEM_ACESSO": "N/P,N\\A,NA,N/A,NP,-,NB"
         })
 
     def carregar_env(self, env_file: Path = None):

@@ -461,6 +461,70 @@ class Database:
         
         return self._adicionar_acessos(funcionarios)
     
+    def buscar_retornados_com_acessos_bloqueados(self, mes_inicio: int = None, ano_inicio: int = None,
+                                                     mes_fim: int = None, ano_fim: int = None) -> List[Dict]:
+        """
+        Busca funcionários que já retornaram de férias mas ainda têm acessos bloqueados.
+        Esses funcionários deveriam ter seus acessos liberados.
+        
+        Args:
+            mes_inicio: Mês inicial do filtro (opcional)
+            ano_inicio: Ano inicial do filtro (opcional)
+            mes_fim: Mês final do filtro (opcional)
+            ano_fim: Ano final do filtro (opcional)
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        hoje = datetime.now().strftime('%Y-%m-%d')
+        
+        # Busca IDs de funcionários com acessos BLOQUEADO
+        cursor.execute("""
+            SELECT DISTINCT funcionario_id 
+            FROM acessos 
+            WHERE status = 'BLOQUEADO'
+        """)
+        ids_bloqueados = [row["funcionario_id"] for row in cursor.fetchall()]
+        
+        if not ids_bloqueados:
+            conn.close()
+            return []
+        
+        # Monta query base
+        placeholders = ','.join('?' * len(ids_bloqueados))
+        query = f"""
+            SELECT * FROM funcionarios 
+            WHERE id IN ({placeholders})
+            AND date(data_retorno) < ?
+        """
+        params = ids_bloqueados + [hoje]
+        
+        # Adiciona filtro de período se especificado
+        if mes_inicio and ano_inicio:
+            data_inicio = f"{ano_inicio}-{mes_inicio:02d}-01"
+            query += " AND date(data_saida) >= ?"
+            params.append(data_inicio)
+        
+        if mes_fim and ano_fim:
+            # Último dia do mês
+            if mes_fim == 12:
+                prox_mes = 1
+                prox_ano = ano_fim + 1
+            else:
+                prox_mes = mes_fim + 1
+                prox_ano = ano_fim
+            data_fim = f"{prox_ano}-{prox_mes:02d}-01"
+            query += " AND date(data_saida) < ?"
+            params.append(data_fim)
+        
+        query += " ORDER BY data_retorno DESC"
+        
+        cursor.execute(query, params)
+        funcionarios = [self._row_to_dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        return self._adicionar_acessos(funcionarios)
+    
     def buscar_acessos_pendentes(self) -> List[Dict]:
         """Busca funcionários em férias com acessos pendentes (NB)."""
         conn = self._get_connection()

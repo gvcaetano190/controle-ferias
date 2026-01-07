@@ -631,6 +631,38 @@ def render(database):
     
     st.divider()
     
+    # ==================== PADRÕES DE ACESSOS ====================
+    st.subheader("🔧 Padrões de Processamento")
+    
+    st.caption("ℹ️ Configure os valores que indicam que um funcionário **não tem acesso** a determinada ferramenta na planilha.")
+    
+    # Carrega padrões atuais
+    padroes_sem_acesso_atual = config_atual.get("PADROES_SEM_ACESSO", "N/P,N\\A,NA,N/A,NP,-,NB")
+    
+    with st.expander("📋 Padrões de 'Sem Acesso' (NA)", expanded=True):
+        st.info("""
+        **O que são esses padrões?**
+        
+        Na planilha, algumas células indicam que a pessoa não utiliza determinada ferramenta.
+        Por exemplo: `NB`, `NP`, `N/A`, `-`, etc.
+        
+        Esses valores serão mapeados para o status **"NA"** (Não Aplicável) e não aparecerão como pendentes.
+        """)
+        
+        padroes_sem_acesso = st.text_input(
+            "Valores separados por vírgula:",
+            value=padroes_sem_acesso_atual,
+            help="Cada valor separado por vírgula será tratado como 'Não tem acesso'. Ex: NB,NP,N/A,-",
+            key="padroes_sem_acesso"
+        )
+        
+        # Preview dos padrões
+        if padroes_sem_acesso:
+            padroes_lista = [p.strip() for p in padroes_sem_acesso.split(",") if p.strip()]
+            st.caption(f"**{len(padroes_lista)} padrões configurados:** {', '.join([f'`{p}`' for p in padroes_lista])}")
+    
+    st.divider()
+    
     # ==================== BOTÃO SALVAR ====================
     if st.button("💾 Salvar Configurações", type="primary", width='stretch'):
         with st.spinner("Salvando configurações..."):
@@ -667,6 +699,9 @@ def render(database):
             else:
                 novas_config["ONETIMESECRET_EMAIL"] = config_atual.get("ONETIMESECRET_EMAIL", "")
                 novas_config["ONETIMESECRET_API_KEY"] = config_atual.get("ONETIMESECRET_API_KEY", "")
+            
+            # Padrões de processamento
+            novas_config["PADROES_SEM_ACESSO"] = padroes_sem_acesso
             
             try:
                 if config_manager.salvar_config(novas_config):

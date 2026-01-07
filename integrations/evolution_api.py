@@ -372,14 +372,7 @@ class MensagensAutomaticas:
                     for sistema, status in acessos.items()
                 )
                 
-                # Conta acessos por status
-                total_acessos = len(acessos) if acessos else 0
-                acessos_liberados = sum(
-                    1 for status in acessos.values() 
-                    if status == "LIBERADO"
-                )
-                
-                # Define status
+                # Define status na mensagem
                 if tem_bloqueado:
                     acessos_bloqueados = [
                         sistema for sistema, status in acessos.items()
@@ -392,11 +385,9 @@ class MensagensAutomaticas:
                         if status == "PENDENTE"
                     ]
                     mensagem += f"• {nome} - ⏳ Pendentes: {', '.join(acessos_pendentes)}\n"
-                elif total_acessos > 0 and acessos_liberados == total_acessos:
-                    mensagem += f"• {nome} - ✅ Todos os acessos liberados\n"
                 else:
-                    # Caso não tenha acessos configurados ou status misto
-                    mensagem += f"• {nome}\n"
+                    # Sem bloqueios e sem pendentes = tudo OK
+                    mensagem += f"• {nome} ✅\n"
             mensagem += "\n"
         else:
             mensagem += f"✅ Nenhum funcionário voltando {texto_data.lower()}.\n\n"
