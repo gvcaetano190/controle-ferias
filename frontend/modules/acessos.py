@@ -123,12 +123,13 @@ def render(database):
     st.divider()
     
     # Pendentes (em férias)
+    st.subheader("🏖️ Funcionários em Férias")
+    
     pendentes = database.buscar_acessos_pendentes()
     
     if pendentes:
-        st.subheader(f"⚠️ Funcionários com Acessos Pendentes ({len(pendentes)})")
-        st.warning(f"Atenção: {len(pendentes)} funcionário(s) em férias com acessos não configurados!")
+        st.warning(f"⚠️ Atenção: {len(pendentes)} funcionário(s) em férias com acessos não configurados!")
         exibir_tabela_funcionarios(pendentes)
     else:
-        st.success("✅ Todos os funcionários em férias têm acessos configurados!")
+        st.success("✅ Todos os funcionários em férias já estão com os acessos bloqueados!")
 
