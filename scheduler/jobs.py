@@ -132,7 +132,7 @@ def job_sincronizacao():
 def job_verificar_ferias_proximas():
     """
     Verifica funcionários que vão sair de férias em breve.
-    Envia notificações se configurado (apenas dias úteis).
+    Apenas registra no log, NÃO envia mensagens (a mensagem matutina já cobre isso).
     """
     if not _eh_dia_util():
         print(f"\n📅 [{datetime.now().strftime('%H:%M:%S')}] Verificação de férias pulada (fim de semana)")
@@ -152,30 +152,19 @@ def job_verificar_ferias_proximas():
             return
         
         print(f"   ⚠️ {len(proximos)} funcionário(s) saindo nos próximos {dias} dia(s)")
+        for func in proximos:
+            print(f"      - {func.get('nome', 'N/A')} (saída: {func.get('data_saida', 'N/A')})")
         
-        # Envia notificações se Evolution API estiver configurada
-        if settings.EVOLUTION_ENABLED:
-            from integrations.evolution_api import EvolutionAPI
-            api = EvolutionAPI(
-                url=settings.EVOLUTION_API_URL,
-                numero=settings.EVOLUTION_NUMERO,
-                api_key=settings.EVOLUTION_API_KEY
-            )
-            
-            enviados = 0
-            erros = 0
-            for func in proximos:
-                resultado = api.enviar_aviso_ferias(func)
-                if resultado["sucesso"]:
-                    enviados += 1
-                else:
-                    erros += 1
-                    print(f"   ⚠️ Erro ao enviar aviso para {func.get('nome', 'N/A')}: {resultado['mensagem']}")
-            
-            if enviados > 0:
-                print(f"   📨 {enviados} aviso(s) de férias enviado(s)")
-            if erros > 0:
-                print(f"   ❌ {erros} erro(s) ao enviar avisos")
+        # NÃO envia mensagens aqui - a mensagem matutina já cobre essa informação
+        # Apenas registra no log de atividades
+        db.registrar_log(
+            tipo="verificacao",
+            categoria="Férias",
+            status="info",
+            mensagem=f"{len(proximos)} funcionário(s) saindo nos próximos {dias} dia(s)",
+            detalhes=", ".join([f.get('nome', 'N/A') for f in proximos]),
+            origem="scheduler"
+        )
         
     except Exception as e:
         print(f"   ❌ Erro ao verificar férias: {e}")
@@ -280,13 +269,14 @@ def _verificar_e_executar_jobs_perdidos():
             _marcar_job_executado("sync")
             jobs_executados.append("sync")
     
-    # Verifica verificação de férias (09:00)
-    if settings.EVOLUTION_ENABLED and not _verificar_job_executado("ferias"):
-        if hora_atual > 9 or (hora_atual == 9 and minuto_atual > 0):
-            print(f"   ⏰ Verificação de férias das 09:00 foi perdida, executando agora...")
-            job_verificar_ferias_proximas()
-            _marcar_job_executado("ferias")
-            jobs_executados.append("ferias")
+    # Verifica verificação de férias (09:00) - não envia mensagem, apenas verifica
+    # NOTA: Removido desta verificação pois é apenas informativo e não crítico
+    # if settings.EVOLUTION_ENABLED and not _verificar_job_executado("ferias"):
+    #     if hora_atual > 9 or (hora_atual == 9 and minuto_atual > 0):
+    #         print(f"   ⏰ Verificação de férias das 09:00 foi perdida, executando agora...")
+    #         job_verificar_ferias_proximas()
+    #         _marcar_job_executado("ferias")
+    #         jobs_executados.append("ferias")
     
     # Verifica mensagem matutina (o job já tem controle de duplicação interno)
     if settings.EVOLUTION_ENABLED and settings.MENSAGEM_MANHA_ENABLED and not _verificar_job_executado("manha"):
@@ -340,7 +330,7 @@ def iniciar_scheduler(executar_perdidos: bool = True):
     
     _scheduler = BackgroundScheduler()
     
-    # Job de sincronização diária (segunda a sexta)
+    # Job 1: Sincronização diária (segunda a sexta)
     if settings.SYNC_ENABLED:
         _scheduler.add_job(
             job_sincronizacao,
@@ -350,17 +340,7 @@ def iniciar_scheduler(executar_perdidos: bool = True):
             replace_existing=True
         )
     
-    # Job de verificação de férias próximas (segunda a sexta às 09:00)
-    if settings.EVOLUTION_ENABLED:
-        _scheduler.add_job(
-            job_verificar_ferias_proximas,
-            CronTrigger(hour=9, minute=0, day_of_week='mon-fri'),
-            id='verificar_ferias_proximas',
-            name='Verificação de Férias Próximas',
-            replace_existing=True
-        )
-    
-    # Job de mensagem matutina (segunda a sexta)
+    # Job 2: Mensagem matutina (segunda a sexta)
     if settings.EVOLUTION_ENABLED and settings.MENSAGEM_MANHA_ENABLED:
         _scheduler.add_job(
             job_mensagem_manha,
@@ -370,7 +350,7 @@ def iniciar_scheduler(executar_perdidos: bool = True):
             replace_existing=True
         )
     
-    # Job de mensagem vespertina (segunda a sexta)
+    # Job 3: Mensagem vespertina (segunda a sexta)
     if settings.EVOLUTION_ENABLED and settings.MENSAGEM_TARDE_ENABLED:
         _scheduler.add_job(
             job_mensagem_tarde,
@@ -388,7 +368,6 @@ def iniciar_scheduler(executar_perdidos: bool = True):
     if settings.SYNC_ENABLED:
         print(f"   🔄 Sincronização: seg-sex às {settings.SYNC_HOUR:02d}:{settings.SYNC_MINUTE:02d}")
     if settings.EVOLUTION_ENABLED:
-        print(f"   📅 Verificação de Férias Próximas: seg-sex às 09:00")
         if settings.MENSAGEM_MANHA_ENABLED:
             print(f"   🌅 Mensagem Matutina: seg-sex às {settings.MENSAGEM_MANHA_HOUR:02d}:{settings.MENSAGEM_MANHA_MINUTE:02d}")
         if settings.MENSAGEM_TARDE_ENABLED:

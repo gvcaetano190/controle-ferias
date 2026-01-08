@@ -835,14 +835,30 @@ def _render_relatorio_retorno(database):
     
     st.divider()
     
-    # Filtro de status
-    filtro_status = st.radio(
-        "Filtrar por status:",
-        ["Todos", "✅ Apenas Liberados", "🔴 Apenas com Bloqueio"],
-        horizontal=True,
-        key="filtro_status_retorno"
-    )
+    # Filtros
+    col_filtro1, col_filtro2 = st.columns([2, 1])
     
+    with col_filtro1:
+        filtro_nome_retorno = st.text_input(
+            "🔍 Buscar por nome:",
+            placeholder="Digite o nome do funcionário...",
+            key="filtro_nome_retorno"
+        )
+    
+    with col_filtro2:
+        filtro_status = st.radio(
+            "Filtrar por status:",
+            ["Todos", "✅ Apenas Liberados", "🔴 Apenas com Bloqueio"],
+            horizontal=True,
+            key="filtro_status_retorno"
+        )
+    
+    # Aplica filtro por nome
+    if filtro_nome_retorno:
+        filtro_nome_upper = filtro_nome_retorno.upper()
+        dados_tabela = [d for d in dados_tabela if filtro_nome_upper in d["Nome"].upper()]
+    
+    # Aplica filtro por status
     if filtro_status == "✅ Apenas Liberados":
         dados_tabela = [d for d in dados_tabela if "✅" in d["Status Geral"]]
     elif filtro_status == "🔴 Apenas com Bloqueio":
@@ -1075,7 +1091,14 @@ def _render_relatorio_saida(database):
     
     st.divider()
     
-    # Filtros
+    # Filtro por nome
+    filtro_nome_saida = st.text_input(
+        "🔍 Buscar por nome:",
+        placeholder="Digite o nome do funcionário...",
+        key="filtro_nome_saida"
+    )
+    
+    # Filtros de status e situação
     col_f1, col_f2 = st.columns(2)
     
     with col_f1:
@@ -1094,12 +1117,18 @@ def _render_relatorio_saida(database):
             key="filtro_ferias_saida"
         )
     
-    # Aplica filtros
+    # Aplica filtro por nome
+    if filtro_nome_saida:
+        filtro_nome_upper = filtro_nome_saida.upper()
+        dados_tabela = [d for d in dados_tabela if filtro_nome_upper in d["Nome"].upper()]
+    
+    # Aplica filtros de status
     if filtro_status == "✅ Apenas OK":
         dados_tabela = [d for d in dados_tabela if "✅" in d["Status Geral"]]
     elif filtro_status == "⚠️ Apenas Pendentes":
         dados_tabela = [d for d in dados_tabela if "⚠️" in d["Status Geral"]]
     
+    # Aplica filtro de situação
     if filtro_ferias == "🏖️ Em férias agora":
         dados_tabela = [d for d in dados_tabela if d["Em Férias"] == "Sim"]
     elif filtro_ferias == "📋 Já retornaram":
