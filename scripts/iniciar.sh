@@ -1,6 +1,6 @@
 #!/bin/bash
 # ===========================================
-# Script para iniciar o Sistema de Controle de Férias
+# Script para iniciar a aplicação (frontend)
 # Compatível com: Linux, macOS, Docker
 # ===========================================
 
@@ -26,11 +26,8 @@ if ! python -c "import streamlit" 2>/dev/null; then
     exit 1
 fi
 
-# Mata processos anteriores
-pkill -f "streamlit run" 2>/dev/null || true
-
 echo ""
-echo "🚀 Iniciando Streamlit..."
+echo "🚀 Iniciando Aplicação Principal (Streamlit)..."
 echo "   Acesse: http://localhost:8501"
 echo ""
 
