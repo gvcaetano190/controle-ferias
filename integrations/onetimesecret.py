@@ -147,16 +147,50 @@ class OneTimeSecretAPI:
                 # Obtém o estado do record
                 state = record.get("state", "unknown")
                 
-                # Se o estado for 'received' ou houver campo 'received' (data), significa que foi visualizado
-                # A API pode retornar 'received' como estado ou 'viewed' com data em 'received'
-                if state == "received" or record.get("received"):
-                    state = "viewed"
+                # Verifica se foi visualizado
+                # O estado pode ser 'received', 'viewed', ou 'new'
+                # O campo 'received' contém a data/hora quando foi visualizado (se existir e não for None/vazio)
+                received_value = record.get("received")
+                
+                # Verifica se received_value é uma data válida (não None, não vazio, não "None" como string)
+                has_received_date = False
+                if received_value:
+                    received_str = str(received_value).strip()
+                    if received_str and received_str.lower() not in ("none", "null", ""):
+                        # Verifica se parece ser uma data (contém números e caracteres de data)
+                        if any(c.isdigit() for c in received_str):
+                            has_received_date = True
+                
+                # Considera como visualizado apenas se:
+                # 1. O estado for explicitamente 'received' ou 'viewed' E houver data de recebimento válida, OU
+                # 2. O estado for 'viewed' (mesmo sem data, pois a API pode não retornar a data)
+                # IMPORTANTE: 'new' nunca deve ser considerado como visualizado
+                if state == "new":
+                    # Se o estado é 'new', sempre mantém como 'new', mesmo se houver campo 'received'
+                    # (pode ser um bug da API ou campo preenchido incorretamente)
+                    final_state = "new"
+                elif state in ("received", "viewed"):
+                    # Se o estado é 'received' ou 'viewed', confirma se há data válida
+                    if has_received_date:
+                        final_state = "viewed"
+                    else:
+                        # Estado diz 'received'/'viewed' mas sem data - pode ser inconsistente
+                        # Por segurança, considera como 'new' se não houver data válida
+                        final_state = "new"
+                else:
+                    # Estado desconhecido - mantém o original
+                    final_state = state
                 
                 return {
                     "sucesso": True,
-                    "status": state, # 'new' ou 'viewed'
-                    "visualizado_em": record.get("received", None),
-                    "detalhes": record
+                    "status": final_state, # 'new' ou 'viewed'
+                    "visualizado_em": received_value if has_received_date else None,
+                    "detalhes": record,
+                    "debug": {
+                        "state_original": state,
+                        "has_received_date": has_received_date,
+                        "received_value": received_value
+                    }
                 }
             elif response.status_code == 404:
                 return {"sucesso": False, "mensagem": "Segredo não encontrado (pode ter expirado ou região errada)"}

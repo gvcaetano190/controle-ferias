@@ -509,40 +509,52 @@ def render(database):
                     with col2:
                         # Botão Status
                         if st.button("🔄 Checar Status", key=f"chk_{link['id']}", width="stretch"):
-                            api = OneTimeSecretAPI(
-                                email=settings.ONETIMESECRET_EMAIL,
-                                api_key=settings.ONETIMESECRET_API_KEY
-                            )
-                            
-                            resultado = api.verificar_status(link.get('metadata_key', ''), link.get('link_url', ''))
-                            
-                            if resultado.get("sucesso"):
-                                state = (resultado.get("status") or "").lower()
-                                
-                                if state in ('viewed', 'received'):
-                                    st.error("❌ **O link JÁ FOI ABERTO!**")
-                                    if resultado.get('visualizado_em'):
-                                        st.caption(f"Visto em: {formatar_data(resultado['visualizado_em'])}")
-                                    if not link.get('visualizado'):
-                                        database.marcar_link_visualizado(link['id'])
-                                        st.toast("Status atualizado para Visualizado!")
-                                        time.sleep(1)
-                                        st.rerun()
-                                elif state == 'expired':
-                                    st.warning("⏳ **O link EXPIROU!**")
-                                    st.caption("O tempo limite (TTL) acabou e o segredo foi destruído sem ser lido.")
-                                elif state == 'burned':
-                                    st.warning("🔥 **O link foi QUEIMADO manualmente!**")
-                                    st.caption("Alguém deletou este segredo antes do tempo.")
-                                elif state == 'new':
-                                    if tempo_restante.total_seconds() <= 0:
-                                        st.info("🗑️ **Link expirou (cálculo local).**")
-                                    else:
-                                        st.success("✅ **O link AINDA NÃO foi aberto.**")
-                                else:
-                                    st.info(f"ℹ️ Status: {state}")
+                            # Verifica se metadata_key existe
+                            metadata_key = link.get('metadata_key', '')
+                            if not metadata_key:
+                                st.warning("⚠️ **Metadata key não encontrado.**\n\nEste link foi criado antes da implementação do rastreamento de status.")
                             else:
-                                st.error(f"❌ Erro: {resultado.get('mensagem', 'Erro desconhecido')}")
+                                with st.spinner("Verificando status..."):
+                                    api = OneTimeSecretAPI(
+                                        email=settings.ONETIMESECRET_EMAIL,
+                                        api_key=settings.ONETIMESECRET_API_KEY
+                                    )
+                                    
+                                    resultado = api.verificar_status(metadata_key, link.get('link_url', ''))
+                                    
+                                    if resultado.get("sucesso"):
+                                        state = (resultado.get("status") or "").lower()
+                                        
+                                        # Verifica se realmente foi visualizado
+                                        if state == 'viewed':
+                                            # Confirma que há data de visualização
+                                            if resultado.get('visualizado_em'):
+                                                st.error("❌ **O link JÁ FOI ABERTO!**")
+                                                st.caption(f"Visto em: {formatar_data(resultado['visualizado_em'])}")
+                                                if not link.get('visualizado'):
+                                                    database.marcar_link_visualizado(link['id'])
+                                                    st.toast("Status atualizado para Visualizado!")
+                                                    time.sleep(1)
+                                                    st.rerun()
+                                            else:
+                                                # Estado 'viewed' mas sem data - pode ser falso positivo
+                                                st.warning("⚠️ **Status inconsistente.**\n\nO link pode ter sido aberto, mas a data não está disponível.")
+                                        elif state == 'expired':
+                                            st.warning("⏳ **O link EXPIROU!**")
+                                            st.caption("O tempo limite (TTL) acabou e o segredo foi destruído sem ser lido.")
+                                        elif state == 'burned':
+                                            st.warning("🔥 **O link foi QUEIMADO manualmente!**")
+                                            st.caption("Alguém deletou este segredo antes do tempo.")
+                                        elif state == 'new':
+                                            if tempo_restante.total_seconds() <= 0:
+                                                st.info("🗑️ **Link expirou (cálculo local).**")
+                                            else:
+                                                st.success("✅ **O link AINDA NÃO foi aberto.**")
+                                        else:
+                                            st.info(f"ℹ️ Status: {state}")
+                                    else:
+                                        st.error(f"❌ Erro: {resultado.get('mensagem', 'Erro desconhecido')}")
+                                        st.caption("Verifique sua conexão e credenciais da API.")
                         
                         # Botão Excluir
                         if st.button("🗑️ Excluir", key=f"del_{link['id']}", width="stretch", type="secondary"):
