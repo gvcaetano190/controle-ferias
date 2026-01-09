@@ -59,7 +59,7 @@ def render(database):
     # Busca dados do banco
     abas = database.buscar_abas()
     saindo_hoje = database.buscar_saindo_hoje()
-    voltando_amanha = database.buscar_voltando_amanha()
+    voltando_proximo_dia = database.buscar_retornos_proximo_dia_util()
     em_ferias = database.buscar_em_ferias()
     proximos_sair = database.buscar_proximos_a_sair(dias=7)
     
@@ -113,7 +113,7 @@ def render(database):
     with col1:
         st.metric("🏖️ Saindo Hoje", len(saindo_hoje))
     with col2:
-        st.metric(f"📅 {texto_voltando}", len(voltando_amanha))
+        st.metric(f"📅 {texto_voltando}", len(voltando_proximo_dia))
     with col3:
         st.metric("🌴 Em Férias", len(em_ferias))
     with col4:
@@ -128,7 +128,7 @@ def render(database):
         f"📋 {aba_selecionada or 'Funcionários'} ({len(funcionarios_aba)})",
         f"🏖️ Saindo Hoje ({len(saindo_hoje)})",
         f"📆 Próximos a Sair ({len(proximos_sair)})",
-        f"📅 {texto_voltando_completo} ({len(voltando_amanha)})",
+        f"📅 {texto_voltando_completo} ({len(voltando_proximo_dia)})",
         f"🌴 Em Férias ({len(em_ferias)})"
     ])
     
@@ -155,9 +155,9 @@ def render(database):
             st.success("✅ Nenhum funcionário saindo nos próximos 7 dias")
     
     with tab4:
-        if voltando_amanha:
+        if voltando_proximo_dia:
             st.subheader(f"📅 Funcionários {texto_voltando_completo}")
-            exibir_tabela_funcionarios(voltando_amanha)
+            exibir_tabela_funcionarios(voltando_proximo_dia)
         else:
             st.success(f"✅ Nenhum funcionário {texto_voltando_completo.lower()}")
     

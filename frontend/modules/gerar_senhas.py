@@ -34,7 +34,7 @@ def render(database):
     # ==================== ABA: GERAR SENHAS ====================
     with tab_gerar:
         # Busca pessoas voltando para usar na lógica
-        voltando_amanha = database.buscar_voltando_amanha()
+        voltando_proximo_dia = database.buscar_retornos_proximo_dia_util()
         
         # Determina texto "Amanhã" ou "Segunda"
         hoje = datetime.now()
@@ -51,7 +51,7 @@ def render(database):
             )
             is_lote = "Em Lote" in modo_geracao
         
-        if is_lote and not voltando_amanha:
+        if is_lote and not voltando_proximo_dia:
             st.info(f"ℹ️ Ninguém voltando de férias {texto_voltando.lower()}. Mudando para modo Individual.")
             is_lote = False
         
@@ -196,15 +196,15 @@ def render(database):
             pessoas_alvo = []  # Lista de (Nome, ID/Ref)
             
             if is_lote:
-                st.info(f"👥 Serão gerados **{len(voltando_amanha)} links**, um para cada funcionário abaixo:")
+                st.info(f"👥 Serão gerados **{len(voltando_proximo_dia)} links**, um para cada funcionário abaixo:")
                 # Mostra quem vai receber
                 cols_nomes = st.columns(3)
-                for i, p in enumerate(voltando_amanha):
+                for i, p in enumerate(voltando_proximo_dia):
                     with cols_nomes[i % 3]:
                         st.markdown(f"• **{p['nome']}**")
                 
-                pessoas_alvo = [{"nome": p['nome'], "gestor": p.get('gestor', ''), "referencia": f"Retorno Férias - {p['nome']}"} for p in voltando_amanha]
-                quantidade = len(voltando_amanha)
+                pessoas_alvo = [{"nome": p['nome'], "gestor": p.get('gestor', ''), "referencia": f"Retorno Férias - {p['nome']}"} for p in voltando_proximo_dia]
+                quantidade = len(voltando_proximo_dia)
                 descricao_geral = f"Acesso Retorno Férias ({texto_voltando})"
             else:
                 # Modo Individual
