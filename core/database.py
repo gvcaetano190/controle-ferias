@@ -390,41 +390,38 @@ class Database:
         
         return self._adicionar_acessos(funcionarios)
     
-    def buscar_voltando_amanha(self) -> List[Dict]:
+    def buscar_retornos_proximo_dia_util(self) -> List[Dict]:
         """
-        Busca funcionários voltando amanhã.
-        Se for sexta-feira, sábado ou domingo, busca quem volta na segunda-feira.
+        Busca funcionários que retornam no próximo dia útil.
+        - Em dias de semana (seg-qui), busca quem volta no dia seguinte.
+        - Na sexta-feira, busca quem volta no sábado, domingo e segunda-feira.
         """
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         hoje = datetime.now()
-        dia_semana = hoje.weekday()  # 0=segunda, 4=sexta, 5=sábado, 6=domingo
-        
-        # Se for sexta-feira, sábado ou domingo, busca quem volta na segunda
-        if dia_semana >= 4:  # Sexta (4), Sábado (5) ou Domingo (6)
-            # Calcula próxima segunda-feira
-            if dia_semana == 4:  # Sexta-feira
-                dias_ate_segunda = 3
-            elif dia_semana == 5:  # Sábado
-                dias_ate_segunda = 2
-            else:  # Domingo (6)
-                dias_ate_segunda = 1
-            
-            proxima_segunda = (hoje + timedelta(days=dias_ate_segunda)).strftime('%Y-%m-%d')
-            data_busca = proxima_segunda
+        dia_semana = hoje.weekday()  # 0=segunda, 4=sexta
+
+        datas_busca = []
+        if dia_semana == 4:  # Sexta-feira
+            # Adiciona sábado, domingo e segunda
+            datas_busca.append((hoje + timedelta(days=1)).strftime('%Y-%m-%d'))
+            datas_busca.append((hoje + timedelta(days=2)).strftime('%Y-%m-%d'))
+            datas_busca.append((hoje + timedelta(days=3)).strftime('%Y-%m-%d'))
         else:
-            # Caso contrário, busca quem volta amanhã
+            # Para outros dias da semana, busca apenas o dia seguinte
             amanha = (hoje + timedelta(days=1)).strftime('%Y-%m-%d')
-            data_busca = amanha
+            datas_busca.append(amanha)
+
+        # Cria a string de placeholders para a consulta IN
+        placeholders = ','.join('?' for _ in datas_busca)
+
+        query = f"SELECT * FROM funcionarios WHERE date(data_retorno) IN ({placeholders}) ORDER BY data_retorno ASC"
         
-        cursor.execute(
-            "SELECT * FROM funcionarios WHERE date(data_retorno) = ?",
-            (data_busca,)
-        )
+        cursor.execute(query, datas_busca)
         funcionarios = [self._row_to_dict(row) for row in cursor.fetchall()]
         conn.close()
-        
+
         return self._adicionar_acessos(funcionarios)
     
     def buscar_em_ferias(self) -> List[Dict]:

@@ -338,12 +338,12 @@ class MensagensAutomaticas:
         dia_semana = hoje.weekday()  # 0=segunda, 4=sexta
         
         # Funcionários voltando amanhã (ou segunda se for sexta)
-        voltando_amanha = db.buscar_voltando_amanha()
+        voltando_proximo_dia_util = db.buscar_retornos_proximo_dia_util()
         
         # Determina texto da data de retorno
         if dia_semana == 4:  # Sexta-feira
             proxima_segunda = (hoje + timedelta(days=3)).strftime('%d/%m/%Y')
-            texto_data = f"Segunda-feira ({proxima_segunda})"
+            texto_data = f"no Fim de Semana e Segunda-feira ({proxima_segunda})"
         else:
             amanha = (hoje + timedelta(days=1)).strftime('%d/%m/%Y')
             texto_data = f"Amanhã ({amanha})"
@@ -355,9 +355,9 @@ class MensagensAutomaticas:
         mensagem = f"🌆 *Relatório Vespertino - {hoje_str}*\n\n"
         
         # Seção: Voltando amanhã/segunda
-        if voltando_amanha:
-            mensagem += f"📅 *Voltando {texto_data} - {len(voltando_amanha)} funcionário(s):*\n"
-            for func in voltando_amanha:
+        if voltando_proximo_dia_util:
+            mensagem += f"📅 *Voltando {texto_data} - {len(voltando_proximo_dia_util)} funcionário(s):*\n"
+            for func in voltando_proximo_dia_util:
                 nome = func.get('nome', 'N/A')
                 acessos = func.get('acessos', {})
                 
