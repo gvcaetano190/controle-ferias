@@ -657,6 +657,11 @@ class Database:
             cursor.execute("ALTER TABLE password_links ADD COLUMN descricao TEXT")
         except sqlite3.OperationalError:
             pass
+        
+        try:
+            cursor.execute("ALTER TABLE password_links ADD COLUMN gestor_pessoa TEXT")
+        except sqlite3.OperationalError:
+            pass
 
         # Índice para performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_criado ON password_links(criado_em)")
@@ -676,8 +681,8 @@ class Database:
         cursor.execute("""
             INSERT INTO password_links (
                 senha_usada, link_url, secret_key, metadata_key, ttl_seconds,
-                expirado_em, finalidade, nome_pessoa, descricao, usuario_criador
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                expirado_em, finalidade, nome_pessoa, gestor_pessoa, descricao, usuario_criador
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             link_data.get("senha_usada", ""),
             link_data.get("link_url", ""),
@@ -687,6 +692,7 @@ class Database:
             link_data.get("expirado_em"),
             link_data.get("finalidade", ""),
             link_data.get("nome_pessoa", ""),
+            link_data.get("gestor_pessoa", ""),
             link_data.get("descricao", ""),
             link_data.get("usuario_criador", "")
         ))

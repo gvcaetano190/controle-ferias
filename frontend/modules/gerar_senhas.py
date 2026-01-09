@@ -231,7 +231,13 @@ def render(database):
                     help="Selecione um funcionário como referência (opcional)"
                 )
                 if pessoa_selecionada != "Nenhuma":
-                    pessoas_alvo = [{"nome": pessoa_selecionada, "referencia": f"Retorno Férias - {pessoa_selecionada}"} for _ in range(quantidade)]
+                    # Busca o gestor do funcionário selecionado
+                    gestor_selecionado = ""
+                    for func in todos_funcionarios:
+                        if func.get('nome') == pessoa_selecionada:
+                            gestor_selecionado = func.get('gestor', '')
+                            break
+                    pessoas_alvo = [{"nome": pessoa_selecionada, "gestor": gestor_selecionado, "referencia": f"Retorno Férias - {pessoa_selecionada}"} for _ in range(quantidade)]
             
             st.markdown("#### ⚙️ Configurações do Link")
             col_ttl, col_fin = st.columns(2)
@@ -283,7 +289,7 @@ def render(database):
                             if res.get("sucesso"):
                                 # Adiciona dados extras ao resultado para exibição
                                 res["nome_pessoa"] = alvo["nome"] if is_lote or alvo["nome"] != "Genérico" else ""
-                                res["gestor_pessoa"] = alvo.get("gestor", "") if is_lote else ""
+                                res["gestor_pessoa"] = alvo.get("gestor", "")
                                 res["senha_usada"] = senha_atual
                                 res["numero"] = i + 1
                                 
@@ -299,7 +305,7 @@ def render(database):
                                     "expirado_em": expirado_em.strftime('%Y-%m-%d %H:%M:%S'),
                                     "finalidade": finalidade,
                                     "nome_pessoa": alvo["nome"] if is_lote or alvo["nome"] != "Genérico" else "",
-                                    "gestor_pessoa": alvo.get("gestor", "") if is_lote else "",
+                                    "gestor_pessoa": alvo.get("gestor", ""),
                                     "descricao": descricao_geral if not is_lote else "",
                                     "usuario_criador": "Sistema"
                                 }
@@ -387,29 +393,25 @@ def render(database):
                 
                 # Layout do Cartão
                 with st.container():
+                    # Constrói HTML do gestor se disponível
+                    gestor_html = ""
+                    if item.get('gestor_pessoa'):
+                        gestor_html = f"""<p style="margin: 5px 0 0 0; color: #555; font-size: 0.9em;">👔 Gestor: {item['gestor_pessoa']}</p>"""
+
                     st.markdown(f"""
                     <div style="background-color: {bg_color}; padding: 15px; border-radius: 10px; border-left: 5px solid #1e3a5f; margin-bottom: 10px;">
                         <h4 style="margin:0; color: #1e3a5f;">{icon} {titulo}</h4>
+                        {gestor_html}
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    c1, c2 = st.columns([2, 1])
+                    c1, c2 = st.columns([1, 1])
                     with c1:
-                        if item.get('gestor_pessoa'):
-                            st.caption(f"👔 Gestor: {item['gestor_pessoa']}")
                         st.caption("🔐 Senha definida neste link:")
-                        col_senha, col_btn_senha = st.columns([4, 1])
-                        with col_senha:
-                            st.code(item['senha_usada'], language=None)
-                        with col_btn_senha:
-                            botao_copiar(item['senha_usada'], f"senha_{idx}", "📋 Copiar")
+                        st.code(item['senha_usada'], language=None)
                     with c2:
                         st.caption("🔗 Link OneTimeSecret:")
-                        col_link, col_btn_link = st.columns([4, 1])
-                        with col_link:
-                            st.code(item['link'], language=None)
-                        with col_btn_link:
-                            botao_copiar(item['link'], f"link_{idx}", "📋 Copiar")
+                        st.code(item['link'], language=None)
                     st.markdown("---")
             
             # Exportação em bloco
@@ -462,6 +464,19 @@ def render(database):
                 
                 tempo_restante = (criado_em + timedelta(seconds=link['ttl_seconds'])) - datetime.now()
                 
+                # Busca gestor se não estiver salvo no link
+                gestor_pessoa = link.get('gestor_pessoa', '')
+                if not gestor_pessoa and link.get('nome_pessoa'):
+                    # Tenta buscar o gestor do funcionário no banco
+                    try:
+                        funcionarios = database.buscar_funcionarios()
+                        for func in funcionarios:
+                            if func.get('nome') == link.get('nome_pessoa'):
+                                gestor_pessoa = func.get('gestor', '')
+                                break
+                    except:
+                        pass
+                
                 # Título do expander
                 titulo = f"{link.get('nome_pessoa', 'Link') or 'Link'} - {formatar_data(link['criado_em'])}"
                 if link.get('visualizado'):
@@ -477,8 +492,10 @@ def render(database):
                         st.write(f"**Senha:** {link['senha_usada']}")
                         if link.get('nome_pessoa'):
                             st.write(f"**👤 Pessoa:** {link['nome_pessoa']}")
-                        if link.get('gestor_pessoa'):
-                            st.write(f"**👔 Gestor:** {link['gestor_pessoa']}")
+                        if gestor_pessoa:
+                            st.write(f"**👔 Gestor:** {gestor_pessoa}")
+                        elif link.get('nome_pessoa'):
+                            st.write(f"**👔 Gestor:** *Não informado*")
                         if link.get('descricao'):
                             st.write(f"**📝 Descrição:** {link['descricao']}")
                         st.write(f"**🎯 Finalidade:** {link.get('finalidade', 'N/A')}")
