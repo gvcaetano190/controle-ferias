@@ -113,11 +113,56 @@ class Database:
             )
         """)
         
+        # Tabela de cards do Kanbanize (Cache)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS kanbanize_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id INTEGER UNIQUE NOT NULL,
+                board_id INTEGER,
+                workflow_id INTEGER,
+                workflow_name TEXT,
+                column_id INTEGER,
+                column_name TEXT,
+                title TEXT NOT NULL,
+                description TEXT,
+                color TEXT,
+                custom_fields TEXT,
+                created_at TEXT,
+                last_modified TEXT,
+                in_current_position_since TEXT,
+                synced_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Tabela de filtros salvos
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS kanbanize_filters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filter_name TEXT UNIQUE NOT NULL,
+                workflow_id INTEGER,
+                column_id INTEGER,
+                board_id INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_used DATETIME
+            )
+        """)
+        
         # Índices para performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_func_data_saida ON funcionarios(data_saida)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_func_data_retorno ON funcionarios(data_retorno)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_func_aba ON funcionarios(aba_origem)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_acessos_func ON acessos(funcionario_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kanbanize_card_id ON kanbanize_cards(card_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kanbanize_workflow ON kanbanize_cards(workflow_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kanbanize_column ON kanbanize_cards(column_id)")
+        
+        # Migração: adiciona coluna in_current_position_since se não existir
+        try:
+            cursor.execute("ALTER TABLE kanbanize_cards ADD COLUMN in_current_position_since TEXT")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                # Log silencioso - coluna pode já existir
+                pass
         
         conn.commit()
         conn.close()
@@ -136,38 +181,57 @@ class Database:
     
     def salvar_funcionarios(self, funcionarios: List[Dict]) -> int:
         """
-        Salva lista de funcionários no banco.
-        
-        Args:
-            funcionarios: Lista de dicionários com dados dos funcionários
-            
-        Returns:
-            Número de registros salvos
+        Salva lista de funcionários no banco, atualizando se já existir.
+        Usa o nome do funcionário e a data de saída como chave única.
         """
         conn = self._get_connection()
         cursor = conn.cursor()
         
+        registros_atualizados = 0
+        registros_inseridos = 0
+        
         for f in funcionarios:
-            # Insere funcionário
+            nome = f.get("nome", "")
+            data_saida = f.get("data_saida")
+            
+            # 1. Verifica se já existe um registro com o mesmo nome E data de saída
             cursor.execute("""
-                INSERT INTO funcionarios 
-                (nome, unidade, motivo, data_saida, data_retorno, gestor, aba_origem, mes, ano)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                f.get("nome", ""),
-                f.get("unidade", ""),
-                f.get("motivo", ""),
-                f.get("data_saida"),
-                f.get("data_retorno"),
-                f.get("gestor", ""),
-                f.get("aba_origem", ""),
-                f.get("mes", 0),
-                f.get("ano", 0)
-            ))
+                SELECT id FROM funcionarios WHERE nome = ? AND data_saida = ?
+            """, (nome, data_saida))
+            existente = cursor.fetchone()
             
-            funcionario_id = cursor.lastrowid
-            
-            # Insere acessos
+            if existente:
+                # UPDATE - Atualiza o registro existente
+                funcionario_id = existente[0]
+                cursor.execute("""
+                    UPDATE funcionarios 
+                    SET unidade = ?, motivo = ?, data_retorno = ?, gestor = ?, 
+                        aba_origem = ?, mes = ?, ano = ?
+                    WHERE id = ?
+                """, (
+                    f.get("unidade", ""), f.get("motivo", ""), f.get("data_retorno"),
+                    f.get("gestor", ""), f.get("aba_origem", ""), f.get("mes", 0),
+                    f.get("ano", 0), funcionario_id
+                ))
+                
+                # Deleta acessos antigos para reinserir
+                cursor.execute("DELETE FROM acessos WHERE funcionario_id = ?", (funcionario_id,))
+                registros_atualizados += 1
+            else:
+                # INSERT - Insere um novo registro
+                cursor.execute("""
+                    INSERT INTO funcionarios 
+                    (nome, unidade, motivo, data_saida, data_retorno, gestor, aba_origem, mes, ano)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    nome, f.get("unidade", ""), f.get("motivo", ""), data_saida,
+                    f.get("data_retorno"), f.get("gestor", ""), f.get("aba_origem", ""),
+                    f.get("mes", 0), f.get("ano", 0)
+                ))
+                funcionario_id = cursor.lastrowid
+                registros_inseridos += 1
+
+            # Insere/Reinsere os acessos
             acessos = f.get("acessos", {})
             for sistema, status in acessos.items():
                 cursor.execute("""
@@ -177,7 +241,9 @@ class Database:
         
         conn.commit()
         conn.close()
-        return len(funcionarios)
+        
+        print(f"   -> Inseridos: {registros_inseridos}, Atualizados: {registros_atualizados}")
+        return registros_inseridos + registros_atualizados
     
     def salvar_abas(self, abas: List[Dict]):
         """Salva lista de abas no banco."""
@@ -1390,4 +1456,262 @@ class Database:
         
         return [dict(row) for row in rows]
 
+    # ==================== OPERAÇÕES KANBANIZE ====================
+    
+    def salvar_cards_kanbanize(self, cards: List[Dict], board_id: int = None) -> int:
+        """
+        Salva cards do Kanbanize no banco de dados (cache).
+        
+        Args:
+            cards: Lista de dicionários com dados dos cards
+            board_id: ID do board (para rastreabilidade)
+            
+        Returns:
+            Número de cards salvos/atualizados
+        """
+        import json
+        from datetime import datetime
+        
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        salvos = 0
+        synced_at = datetime.now().isoformat()
+
+        rows = []
+        for card in cards:
+            card_id = card.get('card_id')
+            if not card_id:
+                continue
+
+            custom_fields_json = json.dumps(card.get('custom_fields', []))
+
+            rows.append((
+                card_id,
+                board_id or card.get('board_id'),
+                card.get('workflow_id'),
+                card.get('workflow_name'),
+                card.get('column_id'),
+                card.get('column_name'),
+                card.get('title'),
+                card.get('description'),
+                card.get('color'),
+                custom_fields_json,
+                card.get('created_at'),
+                card.get('last_modified'),
+                card.get('in_current_position_since'),
+                synced_at
+            ))
+
+        if rows:
+            cursor.executemany("""
+                INSERT OR REPLACE INTO kanbanize_cards 
+                (card_id, board_id, workflow_id, workflow_name, column_id, column_name,
+                 title, description, color, custom_fields, created_at, last_modified, 
+                 in_current_position_since, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, rows)
+            salvos = len(rows)
+
+        conn.commit()
+        conn.close()
+
+        return salvos
+    
+    def buscar_cards_kanbanize(self, workflow_id: int = None, column_id: int = None, 
+                               board_id: int = None) -> List[Dict]:
+        """
+        Busca cards do Kanbanize do cache (banco de dados).
+        
+        Args:
+            workflow_id: Filtrar por workflow (opcional)
+            column_id: Filtrar por coluna (opcional)
+            board_id: Filtrar por board (opcional)
+            
+        Returns:
+            Lista de cards encontrados
+        """
+        import json
+        
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM kanbanize_cards WHERE 1=1"
+        params = []
+        
+        if board_id:
+            query += " AND board_id = ?"
+            params.append(board_id)
+        
+        if workflow_id:
+            query += " AND workflow_id = ?"
+            params.append(workflow_id)
+        
+        if column_id:
+            query += " AND column_id = ?"
+            params.append(column_id)
+        
+        query += " ORDER BY synced_at DESC"
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        cards = []
+        for row in rows:
+            card = self._row_to_dict(row)
+            # Reconverte custom_fields de JSON
+            if card.get('custom_fields'):
+                try:
+                    card['custom_fields'] = json.loads(card['custom_fields'])
+                except:
+                    card['custom_fields'] = []
+            cards.append(card)
+        
+        conn.close()
+        
+        return cards
+    
+    def limpar_cards_kanbanize(self, board_id: int = None):
+        """
+        Limpa cache de cards do Kanbanize.
+        
+        Args:
+            board_id: Se fornecido, limpa apenas este board. Senão, limpa tudo.
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        if board_id:
+            cursor.execute("DELETE FROM kanbanize_cards WHERE board_id = ?", (board_id,))
+        else:
+            cursor.execute("DELETE FROM kanbanize_cards")
+        
+        conn.commit()
+        conn.close()
+    
+    def obter_ultima_sincronizacao_kanbanize(self, board_id: int) -> str:
+        """Obtém timestamp da última sincronização dos cards."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT MAX(synced_at) as ultima_sync
+            FROM kanbanize_cards
+            WHERE board_id = ?
+        """, (board_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        return row['ultima_sync'] if row['ultima_sync'] else None
+    
+    def salvar_filtro_kanbanize(self, filter_name: str, workflow_id: int = None, 
+                                column_id: int = None, board_id: int = None) -> bool:
+        """
+        Salva um filtro para reutilização futura.
+        
+        Args:
+            filter_name: Nome do filtro
+            workflow_id: ID do workflow para filtro
+            column_id: ID da coluna para filtro
+            board_id: ID do board
+            
+        Returns:
+            True se salvo com sucesso
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                INSERT OR REPLACE INTO kanbanize_filters
+                (filter_name, workflow_id, column_id, board_id, last_used)
+                VALUES (?, ?, ?, ?, datetime('now'))
+            """, (filter_name, workflow_id, column_id, board_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            conn.close()
+            return False
+    
+    def buscar_filtros_kanbanize(self, board_id: int = None) -> List[Dict]:
+        """Busca filtros salvos."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM kanbanize_filters WHERE 1=1"
+        params = []
+        
+        if board_id:
+            query += " AND board_id = ?"
+            params.append(board_id)
+        
+        query += " ORDER BY last_used DESC"
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [self._row_to_dict(row) for row in rows]
+    
+    def contar_cards_cache(self, board_id: int = None) -> int:
+        """Conta quantos cards estão em cache."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        if board_id:
+            cursor.execute("SELECT COUNT(*) as total FROM kanbanize_cards WHERE board_id = ?", (board_id,))
+        else:
+            cursor.execute("SELECT COUNT(*) as total FROM kanbanize_cards")
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        return result['total'] if result else 0
+
+    def remover_cards_por_nome_coluna(self, board_id: int = None, names: List[str] = None, like_patterns: List[str] = None) -> int:
+        """
+        Remove cards do cache cujo `column_name` corresponde a nomes/expressiones fornecidas.
+
+        Args:
+            board_id: opcional, limita a remoção a um board específico
+            names: lista de nomes exatos (comparação em lowercase)
+            like_patterns: lista de substrings para comparar com LIKE (comparação em lowercase)
+
+        Returns:
+            Número de registros removidos
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        query = "DELETE FROM kanbanize_cards WHERE 1=1"
+        params = []
+
+        if board_id:
+            query += " AND board_id = ?"
+            params.append(board_id)
+
+        conds = []
+        if names:
+            placeholders = ','.join('?' for _ in names)
+            conds.append(f"lower(column_name) IN ({placeholders})")
+            params.extend([n.lower() for n in names])
+
+        if like_patterns:
+            for p in like_patterns:
+                conds.append("lower(column_name) LIKE ?")
+                params.append(f"%{p.lower()}%")
+
+        if conds:
+            query += " AND (" + " OR ".join(conds) + ")"
+
+        cursor.execute(query, params)
+        removed = cursor.rowcount
+
+        conn.commit()
+        conn.close()
+
+        return removed
 

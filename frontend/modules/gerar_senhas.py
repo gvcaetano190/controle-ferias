@@ -360,107 +360,29 @@ def render(database):
                     del st.session_state["links_logged"]
                 st.rerun()
             
-            # Função para criar botão de copiar com feedback
-            def botao_copiar(texto: str, key: str, label: str = "📋 Copiar"):
-                """Cria um botão que copia texto para o clipboard com feedback visual."""
+            # Função para criar botão de copiar com JavaScript
+            def botao_copiar(texto: str, key: str, label: str = "📋"):
+                """Cria um botão que copia texto para o clipboard usando JavaScript."""
                 import streamlit.components.v1 as components
-                import json
                 
-                # Usa JSON para escapar o texto de forma segura
-                texto_json = json.dumps(texto)
-                
-                # Cria um ID único para o botão e mensagem
-                button_id = f"btn_copy_{key.replace('-', '_')}"
-                msg_id = f"msg_copy_{key.replace('-', '_')}"
-                
-                # Escapa o label para HTML
-                label_escaped = label.replace("'", "&#39;").replace('"', "&quot;")
+                # Escapa aspas e caracteres especiais
+                texto_escaped = texto.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
                 
                 html_code = f"""
-                <div style="margin-top: 5px;">
-                    <div id="{msg_id}" style="display: none; color: #00cc00; font-weight: bold; margin-top: 5px; font-size: 0.9em; text-align: center;">
-                        ✅ Copiado com sucesso!
-                    </div>
-                    <button id="{button_id}" 
-                        style="background-color: #262730; color: white; border: 1px solid #4a4a5a; 
-                               padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 14px;
-                               transition: all 0.3s ease; width: 100%; margin-top: 5px;">
-                        {label}
-                    </button>
-                </div>
-                <script>
-                (function() {{
-                    const button = document.getElementById('{button_id}');
-                    const msgDiv = document.getElementById('{msg_id}');
-                    const texto = {texto_json};
-                    
-                    if (button) {{
-                        button.addEventListener('click', function() {{
-                            // Tenta usar a API moderna do clipboard
-                            if (navigator.clipboard && navigator.clipboard.writeText) {{
-                                navigator.clipboard.writeText(texto).then(function() {{
-                                    msgDiv.style.display = 'block';
-                                    button.style.backgroundColor = '#00cc00';
-                                    button.innerHTML = '✅ Copiado!';
-                                    setTimeout(function() {{
-                                        msgDiv.style.display = 'none';
-                                        button.style.backgroundColor = '#262730';
-                                        button.innerHTML = '{label_escaped}';
-                                    }}, 2000);
-                                }}).catch(function(err) {{
-                                    // Fallback: método antigo
-                                    copiarTextoFallback(texto);
-                                }});
-                            }} else {{
-                                // Fallback para navegadores antigos
-                                copiarTextoFallback(texto);
-                            }}
-                        }});
-                    }}
-                    
-                    function copiarTextoFallback(texto) {{
-                        const textArea = document.createElement('textarea');
-                        textArea.value = texto;
-                        textArea.style.position = 'fixed';
-                        textArea.style.left = '-999999px';
-                        textArea.style.top = '-999999px';
-                        document.body.appendChild(textArea);
-                        textArea.focus();
-                        textArea.select();
-                        
-                        try {{
-                            const successful = document.execCommand('copy');
-                            if (successful) {{
-                                msgDiv.style.display = 'block';
-                                button.style.backgroundColor = '#00cc00';
-                                button.innerHTML = '✅ Copiado!';
-                                setTimeout(function() {{
-                                    msgDiv.style.display = 'none';
-                                    button.style.backgroundColor = '#262730';
-                                    button.innerHTML = '{label_escaped}';
-                                }}, 2000);
-                            }} else {{
-                                button.style.backgroundColor = '#cc0000';
-                                button.innerHTML = '❌ Erro ao copiar';
-                                setTimeout(function() {{
-                                    button.style.backgroundColor = '#262730';
-                                    button.innerHTML = '{label_escaped}';
-                                }}, 2000);
-                            }}
-                        }} catch (e) {{
-                            button.style.backgroundColor = '#cc0000';
-                            button.innerHTML = '❌ Erro';
-                            setTimeout(function() {{
-                                button.style.backgroundColor = '#262730';
-                                button.innerHTML = '{label_escaped}';
-                            }}, 2000);
-                        }}
-                        document.body.removeChild(textArea);
-                    }}
-                }})();
-                </script>
+                <button onclick="navigator.clipboard.writeText('{texto_escaped}').then(() => {{
+                    this.innerHTML = '✅';
+                    setTimeout(() => {{ this.innerHTML = '{label}'; }}, 1500);
+                }}).catch(err => {{
+                    this.innerHTML = '❌';
+                    setTimeout(() => {{ this.innerHTML = '{label}'; }}, 1500);
+                }});" 
+                style="background-color: #262730; color: white; border: 1px solid #4a4a5a; 
+                       padding: 5px 15px; border-radius: 5px; cursor: pointer; font-size: 14px;
+                       transition: all 0.2s ease;">
+                    {label}
+                </button>
                 """
-                components.html(html_code, height=70)
+                components.html(html_code, height=40)
             
             # Exibição em Cartões
             for idx, item in enumerate(sucessos):
@@ -487,11 +409,9 @@ def render(database):
                     with c1:
                         st.caption("🔐 Senha definida neste link:")
                         st.code(item['senha_usada'], language=None)
-                        botao_copiar(item['senha_usada'], f"senha_{idx}", "📋 Copiar Senha")
                     with c2:
                         st.caption("🔗 Link OneTimeSecret:")
                         st.code(item['link'], language=None)
-                        botao_copiar(item['link'], f"link_{idx}", "📋 Copiar Link")
                     st.markdown("---")
             
             # Exportação em bloco
@@ -500,8 +420,7 @@ def render(database):
                 for item in sucessos:
                     ident = item['nome_pessoa'] if (is_lote or item.get('nome_pessoa')) else f"Link {item['numero']}"
                     texto_export += f"👤 *{ident}*\n🔗 {item['link']}\n\n"
-                st.text_area("Lista completa:", value=texto_export, height=200, key=f"export_area_{len(sucessos)}")
-                botao_copiar(texto_export, "export_lista", "📋 Copiar Lista Completa")
+                st.text_area("Lista completa:", value=texto_export, height=200)
             
             if erros:
                 for e in erros:
@@ -522,108 +441,6 @@ def render(database):
     # ==================== ABA: HISTÓRICO ====================
     with tab_historico:
         st.markdown("### 📋 Histórico Recente")
-        
-        # Função para criar botão de copiar com feedback (reutilizada do histórico)
-        def botao_copiar_historico(texto: str, key: str, label: str = "📋 Copiar"):
-            """Cria um botão que copia texto para o clipboard com feedback visual."""
-            import streamlit.components.v1 as components
-            import json
-            
-            # Usa JSON para escapar o texto de forma segura
-            texto_json = json.dumps(texto)
-            
-            # Cria um ID único para o botão e mensagem
-            button_id = f"btn_copy_hist_{key.replace('-', '_')}"
-            msg_id = f"msg_copy_hist_{key.replace('-', '_')}"
-            
-            # Escapa o label para HTML
-            label_escaped = label.replace("'", "&#39;").replace('"', "&quot;")
-            
-            html_code = f"""
-            <div style="margin-top: 5px;">
-                <div id="{msg_id}" style="display: none; color: #00cc00; font-weight: bold; margin-top: 5px; font-size: 0.9em; text-align: center;">
-                    ✅ Copiado com sucesso!
-                </div>
-                <button id="{button_id}" 
-                    style="background-color: #262730; color: white; border: 1px solid #4a4a5a; 
-                           padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 14px;
-                           transition: all 0.3s ease; width: 100%; margin-top: 5px;">
-                    {label}
-                </button>
-            </div>
-            <script>
-            (function() {{
-                const button = document.getElementById('{button_id}');
-                const msgDiv = document.getElementById('{msg_id}');
-                const texto = {texto_json};
-                
-                if (button) {{
-                    button.addEventListener('click', function() {{
-                        // Tenta usar a API moderna do clipboard
-                        if (navigator.clipboard && navigator.clipboard.writeText) {{
-                            navigator.clipboard.writeText(texto).then(function() {{
-                                msgDiv.style.display = 'block';
-                                button.style.backgroundColor = '#00cc00';
-                                button.innerHTML = '✅ Copiado!';
-                                setTimeout(function() {{
-                                    msgDiv.style.display = 'none';
-                                    button.style.backgroundColor = '#262730';
-                                    button.innerHTML = '{label_escaped}';
-                                }}, 2000);
-                            }}).catch(function(err) {{
-                                // Fallback: método antigo
-                                copiarTextoFallback(texto);
-                            }});
-                        }} else {{
-                            // Fallback para navegadores antigos
-                            copiarTextoFallback(texto);
-                        }}
-                    }});
-                }}
-                
-                function copiarTextoFallback(texto) {{
-                    const textArea = document.createElement('textarea');
-                    textArea.value = texto;
-                    textArea.style.position = 'fixed';
-                    textArea.style.left = '-999999px';
-                    textArea.style.top = '-999999px';
-                    document.body.appendChild(textArea);
-                    textArea.focus();
-                    textArea.select();
-                    
-                    try {{
-                        const successful = document.execCommand('copy');
-                        if (successful) {{
-                            msgDiv.style.display = 'block';
-                            button.style.backgroundColor = '#00cc00';
-                            button.innerHTML = '✅ Copiado!';
-                            setTimeout(function() {{
-                                msgDiv.style.display = 'none';
-                                button.style.backgroundColor = '#262730';
-                                button.innerHTML = '{label_escaped}';
-                            }}, 2000);
-                        }} else {{
-                            button.style.backgroundColor = '#cc0000';
-                            button.innerHTML = '❌ Erro ao copiar';
-                            setTimeout(function() {{
-                                button.style.backgroundColor = '#262730';
-                                button.innerHTML = '{label_escaped}';
-                            }}, 2000);
-                        }}
-                    }} catch (e) {{
-                        button.style.backgroundColor = '#cc0000';
-                        button.innerHTML = '❌ Erro';
-                        setTimeout(function() {{
-                            button.style.backgroundColor = '#262730';
-                            button.innerHTML = '{label_escaped}';
-                        }}, 2000);
-                    }}
-                    document.body.removeChild(textArea);
-                }}
-            }})();
-            </script>
-            """
-            components.html(html_code, height=70)
         
         # Filtros
         col1, col2 = st.columns([1, 1])
@@ -671,18 +488,8 @@ def render(database):
                     col1, col2 = st.columns([2, 1])
                     
                     with col1:
-                        # URL com botão de copiar
-                        st.write(f"**URL:**")
-                        st.code(link['link_url'], language=None)
-                        botao_copiar_historico(link['link_url'], f"url_{link['id']}", "📋 Copiar Link")
-                        
-                        # Senha com botão de copiar
-                        st.write(f"**Senha:**")
-                        st.code(link['senha_usada'], language=None)
-                        botao_copiar_historico(link['senha_usada'], f"senha_{link['id']}", "📋 Copiar Senha")
-                        
-                        st.divider()
-                        
+                        st.write(f"**URL:** {link['link_url']}")
+                        st.write(f"**Senha:** {link['senha_usada']}")
                         if link.get('nome_pessoa'):
                             st.write(f"**👤 Pessoa:** {link['nome_pessoa']}")
                         if gestor_pessoa:
@@ -702,52 +509,40 @@ def render(database):
                     with col2:
                         # Botão Status
                         if st.button("🔄 Checar Status", key=f"chk_{link['id']}", width="stretch"):
-                            # Verifica se metadata_key existe
-                            metadata_key = link.get('metadata_key', '')
-                            if not metadata_key:
-                                st.warning("⚠️ **Metadata key não encontrado.**\n\nEste link foi criado antes da implementação do rastreamento de status.")
-                            else:
-                                with st.spinner("Verificando status..."):
-                                    api = OneTimeSecretAPI(
-                                        email=settings.ONETIMESECRET_EMAIL,
-                                        api_key=settings.ONETIMESECRET_API_KEY
-                                    )
-                                    
-                                    resultado = api.verificar_status(metadata_key, link.get('link_url', ''))
-                                    
-                                    if resultado.get("sucesso"):
-                                        state = (resultado.get("status") or "").lower()
-                                        
-                                        # Verifica se realmente foi visualizado
-                                        if state == 'viewed':
-                                            # Confirma que há data de visualização
-                                            if resultado.get('visualizado_em'):
-                                                st.error("❌ **O link JÁ FOI ABERTO!**")
-                                                st.caption(f"Visto em: {formatar_data(resultado['visualizado_em'])}")
-                                                if not link.get('visualizado'):
-                                                    database.marcar_link_visualizado(link['id'])
-                                                    st.toast("Status atualizado para Visualizado!")
-                                                    time.sleep(1)
-                                                    st.rerun()
-                                            else:
-                                                # Estado 'viewed' mas sem data - pode ser falso positivo
-                                                st.warning("⚠️ **Status inconsistente.**\n\nO link pode ter sido aberto, mas a data não está disponível.")
-                                        elif state == 'expired':
-                                            st.warning("⏳ **O link EXPIROU!**")
-                                            st.caption("O tempo limite (TTL) acabou e o segredo foi destruído sem ser lido.")
-                                        elif state == 'burned':
-                                            st.warning("🔥 **O link foi QUEIMADO manualmente!**")
-                                            st.caption("Alguém deletou este segredo antes do tempo.")
-                                        elif state == 'new':
-                                            if tempo_restante.total_seconds() <= 0:
-                                                st.info("🗑️ **Link expirou (cálculo local).**")
-                                            else:
-                                                st.success("✅ **O link AINDA NÃO foi aberto.**")
-                                        else:
-                                            st.info(f"ℹ️ Status: {state}")
+                            api = OneTimeSecretAPI(
+                                email=settings.ONETIMESECRET_EMAIL,
+                                api_key=settings.ONETIMESECRET_API_KEY
+                            )
+                            
+                            resultado = api.verificar_status(link.get('metadata_key', ''), link.get('link_url', ''))
+                            
+                            if resultado.get("sucesso"):
+                                state = (resultado.get("status") or "").lower()
+                                
+                                if state in ('viewed', 'received'):
+                                    st.error("❌ **O link JÁ FOI ABERTO!**")
+                                    if resultado.get('visualizado_em'):
+                                        st.caption(f"Visto em: {formatar_data(resultado['visualizado_em'])}")
+                                    if not link.get('visualizado'):
+                                        database.marcar_link_visualizado(link['id'])
+                                        st.toast("Status atualizado para Visualizado!")
+                                        time.sleep(1)
+                                        st.rerun()
+                                elif state == 'expired':
+                                    st.warning("⏳ **O link EXPIROU!**")
+                                    st.caption("O tempo limite (TTL) acabou e o segredo foi destruído sem ser lido.")
+                                elif state == 'burned':
+                                    st.warning("🔥 **O link foi QUEIMADO manualmente!**")
+                                    st.caption("Alguém deletou este segredo antes do tempo.")
+                                elif state == 'new':
+                                    if tempo_restante.total_seconds() <= 0:
+                                        st.info("🗑️ **Link expirou (cálculo local).**")
                                     else:
-                                        st.error(f"❌ Erro: {resultado.get('mensagem', 'Erro desconhecido')}")
-                                        st.caption("Verifique sua conexão e credenciais da API.")
+                                        st.success("✅ **O link AINDA NÃO foi aberto.**")
+                                else:
+                                    st.info(f"ℹ️ Status: {state}")
+                            else:
+                                st.error(f"❌ Erro: {resultado.get('mensagem', 'Erro desconhecido')}")
                         
                         # Botão Excluir
                         if st.button("🗑️ Excluir", key=f"del_{link['id']}", width="stretch", type="secondary"):

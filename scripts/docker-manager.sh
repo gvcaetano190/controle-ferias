@@ -139,3 +139,4 @@ chmod +x ./docker-manager.sh
 
 echo "✅ Arquivo recriado com sucesso e formatado para Linux!"
 
+

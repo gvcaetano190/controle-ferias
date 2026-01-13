@@ -105,7 +105,10 @@ _scheduler = None
 
 
 def job_sincronizacao():
-    """Job de sincronização diária (apenas dias úteis)."""
+    """
+    Job de sincronização diária (apenas dias úteis).
+    Também envia notificação do resultado via WhatsApp.
+    """
     if not _eh_dia_util():
         print(f"\n🔄 [{datetime.now().strftime('%H:%M:%S')}] Sincronização pulada (fim de semana)")
         return
@@ -124,9 +127,39 @@ def job_sincronizacao():
         
         else:
             print(f"   ❌ Erro: {resultado['message']}")
+        
+        # Envia notificação se configurado
+        if settings.SYNC_NOTIF_ENABLED:
+            try:
+                from integrations.evolution_api import EvolutionAPI
+                
+                api = EvolutionAPI(
+                    url=settings.EVOLUTION_API_URL,
+                    numero=settings.EVOLUTION_NUMERO_SYNC or settings.EVOLUTION_NUMERO,
+                    api_key=settings.EVOLUTION_API_KEY
+                )
+                
+                resultado_notif = api.enviar_mensagem_sync(resultado)
+                
+                if resultado_notif["sucesso"]:
+                    print(f"   📱 Notificação enviada para: {api.numero}")
+                else:
+                    print(f"   ⚠️ Falha ao enviar notificação: {resultado_notif['mensagem']}")
+                    
+            except Exception as e:
+                print(f"   ⚠️ Erro ao enviar notificação: {e}")
             
     except Exception as e:
         print(f"   ❌ Erro na sincronização: {e}")
+
+
+def job_sincronizacao_com_notificacao():
+    """
+    Job de sincronização com notificação para número alternativo (13:00).
+    Envia resultado da sincronização via WhatsApp (mesmo que 08:15).
+    """
+    # Executa a mesma sincronização das 08:15 (que já envia notificação)
+    job_sincronizacao()
 
 
 def job_verificar_ferias_proximas():
@@ -240,6 +273,160 @@ def job_mensagem_tarde():
         print(f"   ❌ Erro: {e}")
 
 
+def job_kanbanize_sync_09h30():
+    """Job para sincronizar cards do Kanbanize às 09:30 e enviar notificação."""
+    if not settings.KANBANIZE_SYNC_ENABLED or not settings.KANBANIZE_SYNC_09H30_ENABLED:
+        return
+    
+    if not _eh_dia_util():
+        print(f"\n📋 [{datetime.now().strftime('%H:%M:%S')}] Sync Kanbanize 09:30 pulada (fim de semana)")
+        return
+    
+    print(f"\n📋 [{datetime.now().strftime('%H:%M:%S')}] Sincronizando Kanbanize (09:30)...")
+    
+    try:
+        from integrations.kanbanize import KanbanizeAPI
+        from integrations.evolution_api import EvolutionAPI
+        from core.database import Database
+        
+        # Conecta na API e busca cards
+        api = KanbanizeAPI(settings.KANBANIZE_BASE_URL, settings.KANBANIZE_API_KEY)
+        board_id = int(settings.KANBANIZE_DEFAULT_BOARD_ID)
+        
+        resultado = api.buscar_cards_completos_paralelo(
+            board_ids=[board_id],
+            sem_detalhes=False  # Garante que os campos personalizados sejam buscados
+        )
+        
+        if not resultado.get("sucesso"):
+            print(f"   ❌ Erro na API Kanbanize: {resultado.get('mensagem')}")
+            return
+        
+        cards = resultado.get("dados", [])
+        
+        # Salva no banco
+        db = Database()
+        cards_salvos = db.salvar_cards_kanbanize(cards, board_id=board_id)
+        
+        print(f"   ✅ {cards_salvos} cards sincronizados")
+        
+        # Envia mensagem de notificação
+        if settings.EVOLUTION_ENABLED and settings.EVOLUTION_NUMERO_SYNC:
+            try:
+                api_evolution = EvolutionAPI(
+                    url=settings.EVOLUTION_API_URL,
+                    numero=settings.EVOLUTION_NUMERO_SYNC,
+                    api_key=settings.EVOLUTION_API_KEY
+                )
+                mensagem = f"✅ Kanbanize sincronizado (09:30): {cards_salvos} cards atualizados"
+                resultado_msg = api_evolution.enviar_mensagem(mensagem)
+                
+                if resultado_msg["sucesso"]:
+                    print(f"   📱 Notificação enviada para {api_evolution.numero}")
+                else:
+                    print(f"   ⚠️ Falha ao notificar: {resultado_msg.get('mensagem')}")
+            except Exception as e:
+                print(f"   ⚠️ Erro ao enviar notificação: {e}")
+        
+        # Registra log
+        db.registrar_log(
+            tipo="kanbanize",
+            categoria="Sincronização",
+            status="sucesso",
+            mensagem=f"Sincronização Kanbanize 09:30: {cards_salvos} cards",
+            detalhes=f"Board ID: {board_id}",
+            origem="scheduler"
+        )
+        
+    except Exception as e:
+        print(f"   ❌ Erro: {e}")
+        db.registrar_log(
+            tipo="kanbanize",
+            categoria="Sincronização",
+            status="erro",
+            mensagem="Erro na sincronização Kanbanize 09:30",
+            detalhes=str(e),
+            origem="scheduler"
+        )
+
+
+def job_kanbanize_sync_18h00():
+    """Job para sincronizar cards do Kanbanize às 18:00 e enviar notificação."""
+    if not settings.KANBANIZE_SYNC_ENABLED or not settings.KANBANIZE_SYNC_18H00_ENABLED:
+        return
+    
+    if not _eh_dia_util():
+        print(f"\n📋 [{datetime.now().strftime('%H:%M:%S')}] Sync Kanbanize 18:00 pulada (fim de semana)")
+        return
+    
+    print(f"\n📋 [{datetime.now().strftime('%H:%M:%S')}] Sincronizando Kanbanize (18:00)...")
+    
+    try:
+        from integrations.kanbanize import KanbanizeAPI
+        from integrations.evolution_api import EvolutionAPI
+        from core.database import Database
+        
+        # Conecta na API e busca cards
+        api = KanbanizeAPI(settings.KANBANIZE_BASE_URL, settings.KANBANIZE_API_KEY)
+        board_id = int(settings.KANBANIZE_DEFAULT_BOARD_ID)
+        
+        resultado = api.buscar_cards_completos_paralelo(
+            board_ids=[board_id],
+            sem_detalhes=False  # Garante que os campos personalizados sejam buscados
+        )
+        
+        if not resultado.get("sucesso"):
+            print(f"   ❌ Erro na API Kanbanize: {resultado.get('mensagem')}")
+            return
+        
+        cards = resultado.get("dados", [])
+        
+        # Salva no banco
+        db = Database()
+        cards_salvos = db.salvar_cards_kanbanize(cards, board_id=board_id)
+        
+        print(f"   ✅ {cards_salvos} cards sincronizados")
+        
+        # Envia mensagem de notificação
+        if settings.EVOLUTION_ENABLED and settings.EVOLUTION_NUMERO_SYNC:
+            try:
+                api_evolution = EvolutionAPI(
+                    url=settings.EVOLUTION_API_URL,
+                    numero=settings.EVOLUTION_NUMERO_SYNC,
+                    api_key=settings.EVOLUTION_API_KEY
+                )
+                mensagem = f"✅ Kanbanize sincronizado (18:00): {cards_salvos} cards atualizados"
+                resultado_msg = api_evolution.enviar_mensagem(mensagem)
+                
+                if resultado_msg["sucesso"]:
+                    print(f"   📱 Notificação enviada para {api_evolution.numero}")
+                else:
+                    print(f"   ⚠️ Falha ao notificar: {resultado_msg.get('mensagem')}")
+            except Exception as e:
+                print(f"   ⚠️ Erro ao enviar notificação: {e}")
+        
+        # Registra log
+        db.registrar_log(
+            tipo="kanbanize",
+            categoria="Sincronização",
+            status="sucesso",
+            mensagem=f"Sincronização Kanbanize 18:00: {cards_salvos} cards",
+            detalhes=f"Board ID: {board_id}",
+            origem="scheduler"
+        )
+        
+    except Exception as e:
+        print(f"   ❌ Erro: {e}")
+        db.registrar_log(
+            tipo="kanbanize",
+            categoria="Sincronização",
+            status="erro",
+            mensagem="Erro na sincronização Kanbanize 18:00",
+            detalhes=str(e),
+            origem="scheduler"
+        )
+
+
 def _verificar_e_executar_jobs_perdidos():
     """
     Verifica se há jobs que deveriam ter sido executados hoje mas foram perdidos
@@ -268,6 +455,16 @@ def _verificar_e_executar_jobs_perdidos():
             job_sincronizacao()
             _marcar_job_executado("sync")
             jobs_executados.append("sync")
+    
+    # Verifica sincronização com notificação (13:00)
+    if settings.SYNC_NOTIF_ENABLED and not _verificar_job_executado("sync_notif"):
+        hora_sync_notif = settings.SYNC_NOTIF_HOUR
+        min_sync_notif = settings.SYNC_NOTIF_MINUTE
+        if hora_atual > hora_sync_notif or (hora_atual == hora_sync_notif and minuto_atual > min_sync_notif):
+            print(f"   ⏰ Sincronização + Notificação das {hora_sync_notif:02d}:{min_sync_notif:02d} foi perdida, executando agora...")
+            job_sincronizacao_com_notificacao()
+            _marcar_job_executado("sync_notif")
+            jobs_executados.append("sync_notif")
     
     # Verifica verificação de férias (09:00) - não envia mensagem, apenas verifica
     # NOTA: Removido desta verificação pois é apenas informativo e não crítico
@@ -340,6 +537,16 @@ def iniciar_scheduler(executar_perdidos: bool = True):
             replace_existing=True
         )
     
+    # Job 1.5: Sincronização com notificação (segunda a sexta, 13:00)
+    if settings.SYNC_NOTIF_ENABLED:
+        _scheduler.add_job(
+            job_sincronizacao_com_notificacao,
+            CronTrigger(hour=settings.SYNC_NOTIF_HOUR, minute=settings.SYNC_NOTIF_MINUTE, day_of_week='mon-fri'),
+            id='sync_notif',
+            name='Sincronização + Notificação',
+            replace_existing=True
+        )
+    
     # Job 2: Mensagem matutina (segunda a sexta)
     if settings.EVOLUTION_ENABLED and settings.MENSAGEM_MANHA_ENABLED:
         _scheduler.add_job(
@@ -360,6 +567,26 @@ def iniciar_scheduler(executar_perdidos: bool = True):
             replace_existing=True
         )
     
+    # Job 4: Sincronização Kanbanize 09:30 (segunda a sexta)
+    if settings.KANBANIZE_SYNC_ENABLED and settings.KANBANIZE_SYNC_09H30_ENABLED:
+        _scheduler.add_job(
+            job_kanbanize_sync_09h30,
+            CronTrigger(hour=9, minute=30, day_of_week='mon-fri'),
+            id='kanbanize_sync_09h30',
+            name='Kanbanize Sync 09:30',
+            replace_existing=True
+        )
+    
+    # Job 5: Sincronização Kanbanize 18:00 (segunda a sexta)
+    if settings.KANBANIZE_SYNC_ENABLED and settings.KANBANIZE_SYNC_18H00_ENABLED:
+        _scheduler.add_job(
+            job_kanbanize_sync_18h00,
+            CronTrigger(hour=18, minute=0, day_of_week='mon-fri'),
+            id='kanbanize_sync_18h00',
+            name='Kanbanize Sync 18:00',
+            replace_existing=True
+        )
+    
     _scheduler.start()
     
     print("=" * 60)
@@ -367,6 +594,13 @@ def iniciar_scheduler(executar_perdidos: bool = True):
     print("=" * 60)
     if settings.SYNC_ENABLED:
         print(f"   🔄 Sincronização: seg-sex às {settings.SYNC_HOUR:02d}:{settings.SYNC_MINUTE:02d}")
+    if settings.SYNC_NOTIF_ENABLED:
+        print(f"   🔔 Sincronização + Notificação: seg-sex às {settings.SYNC_NOTIF_HOUR:02d}:{settings.SYNC_NOTIF_MINUTE:02d}")
+    if settings.KANBANIZE_SYNC_ENABLED:
+        if settings.KANBANIZE_SYNC_09H30_ENABLED:
+            print(f"   📋 Kanbanize Sync 09:30: seg-sex às 09:30")
+        if settings.KANBANIZE_SYNC_18H00_ENABLED:
+            print(f"   📋 Kanbanize Sync 18:00: seg-sex às 18:00")
     if settings.EVOLUTION_ENABLED:
         if settings.MENSAGEM_MANHA_ENABLED:
             print(f"   🌅 Mensagem Matutina: seg-sex às {settings.MENSAGEM_MANHA_HOUR:02d}:{settings.MENSAGEM_MANHA_MINUTE:02d}")

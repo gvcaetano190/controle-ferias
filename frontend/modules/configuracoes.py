@@ -22,6 +22,7 @@ from core.validar_planilha import validar_url_google_sheets, testar_planilha_com
 from core.sync_manager import SyncManager
 from integrations.evolution_api import MensagensAutomaticas, EvolutionAPI
 from integrations.onetimesecret import OneTimeSecretAPI
+from integrations.kanbanize import KanbanizeAPI
 
 
 def render(database):
@@ -49,6 +50,15 @@ def render(database):
     
     config_manager = ConfigManager()
     config_atual = config_manager.ler_config()
+    
+    # Inicializa variáveis com valores padrão (sempre disponíveis)
+    evolution_numero_default = config_atual.get("EVOLUTION_NUMERO", "120363020985287866@g.us")
+    evolution_url = config_atual.get("EVOLUTION_API_URL", "http://10.0.153.28:8081/message/sendText/zabbix")
+    evolution_api_key = config_atual.get("EVOLUTION_API_KEY", "")
+    evolution_numero = evolution_numero_default
+    kanbanize_default_board_id = config_atual.get("KANBANIZE_DEFAULT_BOARD_ID", "0")
+    kanbanize_base_url = config_atual.get("KANBANIZE_BASE_URL", "https://fmimpressosltda.kanbanize.com")
+    kanbanize_api_key = config_atual.get("KANBANIZE_API_KEY", "")
     
     st.info("💡 As configurações são salvas no arquivo `.env`. Após alterar, reinicie o scheduler se estiver rodando.")
     
@@ -100,6 +110,229 @@ def render(database):
         )
     
     st.info(f"⏰ **Sincronização configurada para:** {sync_hour:02d}:{sync_minute:02d} {'(Habilitada)' if sync_enabled else '(Desabilitada)'}")
+    
+    # Sincronização com Notificação (13:00)
+    st.subheader("🔔 Sincronização com Notificação (13:00)")
+    
+    st.caption("ℹ️ Executa uma sincronização adicional às 13:00 e envia um relatório via WhatsApp para um número alternativo.")
+    
+    sync_notif_enabled = st.checkbox(
+        "Habilitar sincronização com notificação (13:00)",
+        value=config_atual.get("SYNC_NOTIF_ENABLED", "false").lower() == "true",
+        key="sync_notif_enabled",
+        help="Executa sincronização às 13:00 e envia resultado via WhatsApp"
+    )
+    
+    if sync_notif_enabled:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            sync_notif_hour = st.number_input(
+                "Hora da sincronização com notificação (0-23):",
+                min_value=0,
+                max_value=23,
+                value=int(config_atual.get("SYNC_NOTIF_HOUR", settings.SYNC_NOTIF_HOUR)),
+                key="sync_notif_hour"
+            )
+        
+        with col2:
+            sync_notif_minute = st.number_input(
+                "Minuto da sincronização com notificação (0-59):",
+                min_value=0,
+                max_value=59,
+                value=int(config_atual.get("SYNC_NOTIF_MINUTE", settings.SYNC_NOTIF_MINUTE)),
+                key="sync_notif_minute"
+            )
+        
+        evolution_numero_sync = st.text_input(
+            "Número/Grupo WhatsApp para notificações:",
+            value=config_atual.get("EVOLUTION_NUMERO_SYNC", evolution_numero_default),
+            help="Deixe em branco para usar o número padrão. Exemplos: 120363020985287866@g.us ou 11954175296",
+            key="evolution_numero_sync"
+        )
+        
+        if st.button("🚀 Executar Sincronização com Notificação Agora", key="executar_sync_notif_agora", type="secondary"):
+            with st.spinner("Executando sincronização com notificação..."):
+                try:
+                    sync = SyncManager()
+                    resultado_sync = sync.sincronizar()
+                    
+                    # Envia notificação
+                    api = EvolutionAPI(
+                        url=evolution_url,
+                        numero=evolution_numero_sync or evolution_numero,
+                        api_key=evolution_api_key
+                    )
+                    resultado_notif = api.enviar_mensagem_sync(resultado_sync)
+                    
+                    # Mostra resultados
+                    if resultado_sync["status"] == "success":
+                        st.success(f"✅ Sincronização: {resultado_sync['registros']} registros")
+                    elif resultado_sync["status"] == "skipped":
+                        st.info(f"⏭️ Sincronização: {resultado_sync['message']}")
+                    else:
+                        st.error(f"❌ Sincronização: {resultado_sync['message']}")
+                    
+                    if resultado_notif["sucesso"]:
+                        st.success(f"📱 Notificação enviada para: {api.numero}")
+                    else:
+                        st.warning(f"⚠️ Falha ao notificar: {resultado_notif['mensagem']}")
+                    
+                    database.registrar_log(
+                        tipo="sincronizacao",
+                        categoria="Notificação",
+                        status="sucesso",
+                        mensagem="Sincronização + Notificação executadas manualmente",
+                        detalhes=f"Sync: {resultado_sync.get('status')}; Notif: {'enviada' if resultado_notif['sucesso'] else 'falhou'}",
+                        origem="configuracoes"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Erro: {e}")
+                    st.code(traceback.format_exc())
+                    database.registrar_log(
+                        tipo="sincronizacao",
+                        categoria="Notificação",
+                        status="erro",
+                        mensagem="Erro ao executar sincronização + notificação",
+                        detalhes=str(e),
+                        origem="configuracoes"
+                    )
+        
+        st.info(f"⏰ **Sincronização com notificação configurada para:** {sync_notif_hour:02d}:{sync_notif_minute:02d} (Habilitada)")
+    else:
+        sync_notif_hour = int(config_atual.get("SYNC_NOTIF_HOUR", settings.SYNC_NOTIF_HOUR))
+        sync_notif_minute = int(config_atual.get("SYNC_NOTIF_MINUTE", settings.SYNC_NOTIF_MINUTE))
+        evolution_numero_sync = config_atual.get("EVOLUTION_NUMERO_SYNC", evolution_numero_default)
+    
+    # Sincronização Kanbanize
+    st.subheader("🗂️ Sincronização Kanbanize")
+    
+    st.caption("ℹ️ Sincroniza automaticamente os cards do Kanbanize para o banco de dados em horários pré-definidos.")
+    
+    kanbanize_sync_enabled = st.checkbox(
+        "Habilitar sincronização automática do Kanbanize",
+        value=config_atual.get("KANBANIZE_SYNC_ENABLED", "false").lower() == "true",
+        key="kanbanize_sync_enabled",
+        help="Ativa os schedulers de sincronização do Kanbanize"
+    )
+    
+    if kanbanize_sync_enabled:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            kanbanize_sync_09h30_enabled = st.checkbox(
+                "Sincronizar às 09:30",
+                value=config_atual.get("KANBANIZE_SYNC_09H30_ENABLED", "false").lower() == "true",
+                key="kanbanize_sync_09h30_enabled",
+                help="Sincroniza cards e envia notificação"
+            )
+        
+        with col2:
+            kanbanize_sync_18h00_enabled = st.checkbox(
+                "Sincronizar às 18:00",
+                value=config_atual.get("KANBANIZE_SYNC_18H00_ENABLED", "false").lower() == "true",
+                key="kanbanize_sync_18h00_enabled",
+                help="Sincroniza cards e envia notificação"
+            )
+        
+        st.info(f"📋 **Board configurado:** ID {kanbanize_default_board_id}")
+        st.caption("💡 As notificações serão enviadas para o mesmo número da sincronização (EVOLUTION_NUMERO_SYNC)")
+        
+        if st.button("🚀 Sincronizar Agora", key="kanbanize_sync_manual", type="secondary"):
+            with st.spinner("Sincronizando Kanbanize..."):
+                try:
+                    from integrations.kanbanize import KanbanizeAPI
+                    from core.database import Database
+                    
+                    api_kanbanize = KanbanizeAPI(kanbanize_base_url, kanbanize_api_key)
+                    resultado = api_kanbanize.buscar_cards_completos_paralelo(
+                        board_ids=[int(kanbanize_default_board_id)],
+                        sem_detalhes=False  # Garante que os campos personalizados sejam buscados
+                    )
+                    
+                    if resultado.get("sucesso"):
+                        cards = resultado.get("dados", [])
+                        db = Database()
+                        cards_salvos = db.salvar_cards_kanbanize(cards, board_id=int(kanbanize_default_board_id))
+                        
+                        st.success(f"✅ {cards_salvos} cards sincronizados com sucesso!")
+                        # Envia notificação via Evolution (mesmo comportamento dos jobs)
+                        try:
+                            if settings.EVOLUTION_ENABLED and (evolution_numero_sync or evolution_numero):
+                                api_evolution = EvolutionAPI(
+                                    url=evolution_url,
+                                    numero=(evolution_numero_sync or evolution_numero),
+                                    api_key=evolution_api_key
+                                )
+                                mensagem = f"✅ Kanbanize sincronizado (manual): {cards_salvos} cards atualizados"
+                                resultado_msg = api_evolution.enviar_mensagem(mensagem)
+                                if resultado_msg.get("sucesso"):
+                                    st.success(f"📱 Notificação enviada para {api_evolution.numero}")
+                                else:
+                                    st.warning(f"⚠️ Falha ao notificar: {resultado_msg.get('mensagem')}")
+                        except Exception as e:
+                            st.warning(f"⚠️ Erro ao enviar notificação: {e}")
+
+                        database.registrar_log(
+                            tipo="kanbanize",
+                            categoria="Sincronização",
+                            status="sucesso",
+                            mensagem=f"Sincronização manual: {cards_salvos} cards",
+                            detalhes=f"Board ID: {kanbanize_default_board_id}",
+                            origem="configuracoes"
+                        )
+                    else:
+                        st.error(f"❌ Erro: {resultado.get('mensagem')}")
+                        database.registrar_log(
+                            tipo="kanbanize",
+                            categoria="Sincronização",
+                            status="erro",
+                            mensagem="Erro na sincronização manual",
+                            detalhes=resultado.get('mensagem', 'Erro desconhecido'),
+                            origem="configuracoes"
+                        )
+                        # Tenta notificar falha
+                        try:
+                            if settings.EVOLUTION_ENABLED and (evolution_numero_sync or evolution_numero):
+                                api_evolution = EvolutionAPI(
+                                    url=evolution_url,
+                                    numero=(evolution_numero_sync or evolution_numero),
+                                    api_key=evolution_api_key
+                                )
+                                mensagem = f"❌ Falha na sincronização Kanbanize (manual): {resultado.get('mensagem', 'Erro desconhecido')}"
+                                api_evolution.enviar_mensagem(mensagem)
+                        except Exception:
+                            pass
+                except Exception as e:
+                    st.error(f"❌ Erro ao sincronizar: {e}")
+                    database.registrar_log(
+                        tipo="kanbanize",
+                        categoria="Sincronização",
+                        status="erro",
+                        mensagem="Erro ao sincronizar Kanbanize",
+                        detalhes=str(e),
+                        origem="configuracoes"
+                    )
+                    # Notifica erro
+                    try:
+                        if settings.EVOLUTION_ENABLED and (evolution_numero_sync or evolution_numero):
+                            api_evolution = EvolutionAPI(
+                                url=evolution_url,
+                                numero=(evolution_numero_sync or evolution_numero),
+                                api_key=evolution_api_key
+                            )
+                            mensagem = f"❌ Erro ao sincronizar Kanbanize (manual): {str(e)}"
+                            api_evolution.enviar_mensagem(mensagem)
+                    except Exception:
+                        pass
+    else:
+        kanbanize_sync_09h30_enabled = config_atual.get("KANBANIZE_SYNC_09H30_ENABLED", "false").lower() == "true"
+        kanbanize_sync_18h00_enabled = config_atual.get("KANBANIZE_SYNC_18H00_ENABLED", "false").lower() == "true"
+    
+    # Atualiza config_atual
+    config_atual["KANBANIZE_SYNC_ENABLED"] = "true" if kanbanize_sync_enabled else "false"
+    config_atual["KANBANIZE_SYNC_09H30_ENABLED"] = "true" if kanbanize_sync_09h30_enabled else "false"
+    config_atual["KANBANIZE_SYNC_18H00_ENABLED"] = "true" if kanbanize_sync_18h00_enabled else "false"
     
     st.divider()
     
@@ -175,35 +408,33 @@ def render(database):
         help="Integração com WhatsApp via Evolution API"
     )
     
-    # Inicializa variáveis com valores padrão (sempre disponíveis)
-    evolution_url_default = config_atual.get("EVOLUTION_API_URL", "http://10.0.153.28:8081/message/sendText/zabbix")
-    evolution_numero_default = config_atual.get("EVOLUTION_NUMERO", "120363020985287866@g.us")
-    evolution_api_key_default = config_atual.get("EVOLUTION_API_KEY", "")
-    mensagem_manha_enabled = config_atual.get("MENSAGEM_MANHA_ENABLED", "false").lower() == "true"
-    manha_hour = int(config_atual.get("MENSAGEM_MANHA_HOUR", "8"))
-    manha_minute = int(config_atual.get("MENSAGEM_MANHA_MINUTE", "0"))
-    mensagem_tarde_enabled = config_atual.get("MENSAGEM_TARDE_ENABLED", "false").lower() == "true"
-    tarde_hour = int(config_atual.get("MENSAGEM_TARDE_HOUR", "17"))
-    tarde_minute = int(config_atual.get("MENSAGEM_TARDE_MINUTE", "0"))
+    # Inicializa variáveis de mensagens (se não inicializadas)
+    if 'mensagem_manha_enabled' not in locals():
+        mensagem_manha_enabled = config_atual.get("MENSAGEM_MANHA_ENABLED", "false").lower() == "true"
+        manha_hour = int(config_atual.get("MENSAGEM_MANHA_HOUR", "8"))
+        manha_minute = int(config_atual.get("MENSAGEM_MANHA_MINUTE", "0"))
+        mensagem_tarde_enabled = config_atual.get("MENSAGEM_TARDE_ENABLED", "false").lower() == "true"
+        tarde_hour = int(config_atual.get("MENSAGEM_TARDE_HOUR", "17"))
+        tarde_minute = int(config_atual.get("MENSAGEM_TARDE_MINUTE", "0"))
     
     if evolution_enabled:
         evolution_url = st.text_input(
             "URL Completa do Endpoint:",
-            value=evolution_url_default,
+            value=evolution_url,
             help="URL completa do endpoint (ex: http://10.0.153.28:8081/message/sendText/zabbix)",
             key="evolution_url"
         )
         
         evolution_numero = st.text_input(
             "Número/Grupo do WhatsApp:",
-            value=evolution_numero_default,
+            value=evolution_numero,
             help="Número ou ID do grupo (ex: 120363020985287866@g.us ou 11954175296)",
             key="evolution_numero"
         )
         
         evolution_api_key = st.text_input(
             "API Key:",
-            value=evolution_api_key_default,
+            value=evolution_api_key,
             help="Chave da API (opcional, se sua Evolution API exigir autenticação)",
             type="password",
             key="evolution_api_key"
@@ -528,29 +759,53 @@ def render(database):
         with st.container():
             st.markdown("#### 📋 Resumo do Agendamento")
             
-            col1, col2 = st.columns(2)
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
                 st.markdown("**🔄 Sincronização**")
                 if sync_enabled:
-                    st.success(f"✅ Habilitada às **{sync_hour:02d}:{sync_minute:02d}**")
+                    st.success(f"✅ {sync_hour:02d}:{sync_minute:02d}")
                 else:
                     st.error("❌ Desabilitada")
             
             with col2:
-                st.markdown("**📨 Mensagens Automáticas**")
-                if mensagem_manha_enabled:
-                    st.info(f"🌅 Matutina: **{manha_hour:02d}:{manha_minute:02d}**")
-                if mensagem_tarde_enabled:
-                    st.info(f"🌆 Vespertina: **{tarde_hour:02d}:{tarde_minute:02d}**")
-                if not mensagem_manha_enabled and not mensagem_tarde_enabled:
-                    st.warning("⚠️ Nenhuma mensagem agendada")
+                st.markdown("**🔔 Sincronização + Notif**")
+                if sync_notif_enabled:
+                    st.success(f"✅ {sync_notif_hour:02d}:{sync_notif_minute:02d}")
+                else:
+                    st.error("❌ Desabilitada")
+            
+            with col3:
+                st.markdown("**🗂️ Kanbanize Sync**")
+                if kanbanize_sync_enabled and (kanbanize_sync_09h30_enabled or kanbanize_sync_18h00_enabled):
+                    sync_status = []
+                    if kanbanize_sync_09h30_enabled:
+                        sync_status.append("09:30")
+                    if kanbanize_sync_18h00_enabled:
+                        sync_status.append("18:00")
+                    st.success(f"✅ {' | '.join(sync_status)}")
+                else:
+                    st.warning("⚠️ Desabilitada")
+
+            with col4:
+                st.markdown("**📨 Mensagens**")
+                if mensagem_manha_enabled or mensagem_tarde_enabled:
+                    msg_status = []
+                    if mensagem_manha_enabled:
+                        msg_status.append(f"🌅 {manha_hour:02d}:{manha_minute:02d}")
+                    if mensagem_tarde_enabled:
+                        msg_status.append(f"🌆 {tarde_hour:02d}:{tarde_minute:02d}")
+                    st.success(f"✅ {' | '.join(msg_status)}")
+                else:
+                    st.warning("⚠️ Nenhuma habilitada")
         
         st.divider()
     else:
-        evolution_url = evolution_url_default
-        evolution_numero = evolution_numero_default
-        evolution_api_key = evolution_api_key_default
+        # evolution_url, evolution_numero, evolution_api_key já foram inicializados no topo
+        sync_notif_enabled = config_atual.get("SYNC_NOTIF_ENABLED", "false").lower() == "true"
+        sync_notif_hour = int(config_atual.get("SYNC_NOTIF_HOUR", settings.SYNC_NOTIF_HOUR))
+        sync_notif_minute = int(config_atual.get("SYNC_NOTIF_MINUTE", settings.SYNC_NOTIF_MINUTE))
+        evolution_numero_sync = config_atual.get("EVOLUTION_NUMERO_SYNC", evolution_numero_default)
         st.divider()
     
     st.divider()
@@ -631,6 +886,88 @@ def render(database):
     
     st.divider()
     
+    # ==================== KANBANIZE API ====================
+    st.subheader("📋 Kanbanize API")
+    
+    kanbanize_enabled = st.checkbox(
+        "Habilitar Kanbanize",
+        value=config_atual.get("KANBANIZE_ENABLED", "false").lower() == "true",
+        key="kanbanize_enabled",
+        help="Integração com Kanbanize para visualizar boards e cards"
+    )
+    
+    if kanbanize_enabled:
+        kanbanize_base_url_input = st.text_input(
+            "URL Base:",
+            value=kanbanize_base_url,
+            help="URL base do Kanbanize (ex: https://fmimpressosltda.kanbanize.com)",
+            key="kanbanize_base_url_input"
+        )
+        kanbanize_base_url = kanbanize_base_url_input
+
+        kanbanize_api_key_input = st.text_input(
+            "API Key:",
+            value=kanbanize_api_key,
+            type="password",
+            help="Chave da API do Kanbanize",
+            key="kanbanize_api_key_input"
+        )
+        kanbanize_api_key = kanbanize_api_key_input
+
+        kanbanize_default_board_id_input = st.number_input(
+            "Board Padrão (ID):",
+            min_value=0,
+            value=int(kanbanize_default_board_id) if kanbanize_default_board_id.isdigit() else 0,
+            step=1,
+            help="ID do board padrão. Deixe em 0 para buscar em todos os boards. Este será o board usado por padrão nas buscas de cards.",
+            key="kanbanize_default_board_id_input"
+        )
+        # Atualiza a variável principal com o valor do input
+        kanbanize_default_board_id = str(kanbanize_default_board_id_input)
+        
+        st.info("💡 **Dica:** Você pode encontrar a documentação da API em: **{}/openapi/**".format(kanbanize_base_url))
+        
+        # Botão de teste
+        if st.button("🧪 Testar Kanbanize", key="test_kanbanize"):
+            with st.spinner("Testando conexão..."):
+                try:
+                    api = KanbanizeAPI(
+                        base_url=kanbanize_base_url,
+                        api_key=kanbanize_api_key
+                    )
+                    
+                    resultado = api.testar_conexao()
+                    
+                    if resultado.get("sucesso"):
+                        st.success(f"✅ **Conexão bem-sucedida!**")
+                        st.info("A API do Kanbanize está respondendo corretamente.")
+                    else:
+                        st.error(f"❌ **Erro:** {resultado.get('mensagem', 'Erro desconhecido')}")
+                        st.info("""
+                        💡 **Possíveis soluções:**
+                        - Verifique se a URL base está correta
+                        - Verifique se a API key está correta
+                        - Verifique a documentação da API em: **{}/openapi/**
+                        - A API do Kanbanize pode usar diferentes versões (v1, v2, etc.)
+                        """.format(kanbanize_base_url))
+                except Exception as e:
+                    st.error(f"❌ **Erro ao testar:** {e}")
+    
+    # Atualiza config_atual sempre (para manter valores mesmo quando desabilitado)
+    config_atual["KANBANIZE_ENABLED"] = "true" if kanbanize_enabled else "false"
+    config_atual["KANBANIZE_BASE_URL"] = kanbanize_base_url
+    config_atual["KANBANIZE_API_KEY"] = kanbanize_api_key
+    config_atual["KANBANIZE_DEFAULT_BOARD_ID"] = str(kanbanize_default_board_id)
+    
+    st.divider()
+    
+    # Atualiza config_atual
+    config_atual["KANBANIZE_SYNC_ENABLED"] = "true" if kanbanize_sync_enabled else "false"
+    config_atual["KANBANIZE_SYNC_09H30_ENABLED"] = "true" if kanbanize_sync_09h30_enabled else "false"
+    config_atual["KANBANIZE_SYNC_18H00_ENABLED"] = "true" if kanbanize_sync_18h00_enabled else "false"
+    
+    st.divider()
+    
     # ==================== PADRÕES DE ACESSOS ====================
     st.subheader("🔧 Padrões de Processamento")
     
@@ -673,6 +1010,10 @@ def render(database):
                 "CACHE_MINUTES": str(cache_minutes),
                 "GOOGLE_SHEETS_URL": google_url,
                 "EVOLUTION_ENABLED": "true" if evolution_enabled else "false",
+                "SYNC_NOTIF_ENABLED": "true" if sync_notif_enabled else "false",
+                "SYNC_NOTIF_HOUR": str(sync_notif_hour),
+                "SYNC_NOTIF_MINUTE": str(sync_notif_minute),
+                "EVOLUTION_NUMERO_SYNC": evolution_numero_sync,
                 "NOTIFY_ON_SYNC": "true" if notify_on_sync else "false",
                 "NOTIFY_FERIAS_DIAS_ANTES": str(notify_dias),
             }
@@ -699,6 +1040,17 @@ def render(database):
             else:
                 novas_config["ONETIMESECRET_EMAIL"] = config_atual.get("ONETIMESECRET_EMAIL", "")
                 novas_config["ONETIMESECRET_API_KEY"] = config_atual.get("ONETIMESECRET_API_KEY", "")
+            
+            # Kanbanize - usa as variáveis que sempre estão definidas
+            novas_config["KANBANIZE_ENABLED"] = "true" if kanbanize_enabled else "false"
+            novas_config["KANBANIZE_BASE_URL"] = kanbanize_base_url
+            novas_config["KANBANIZE_API_KEY"] = kanbanize_api_key
+            novas_config["KANBANIZE_DEFAULT_BOARD_ID"] = str(kanbanize_default_board_id)
+            
+            # Kanbanize Sync - usar as variáveis do Streamlit (não de config_atual)
+            novas_config["KANBANIZE_SYNC_ENABLED"] = "true" if kanbanize_sync_enabled else "false"
+            novas_config["KANBANIZE_SYNC_09H30_ENABLED"] = "true" if kanbanize_sync_09h30_enabled else "false"
+            novas_config["KANBANIZE_SYNC_18H00_ENABLED"] = "true" if kanbanize_sync_18h00_enabled else "false"
             
             # Padrões de processamento
             novas_config["PADROES_SEM_ACESSO"] = padroes_sem_acesso

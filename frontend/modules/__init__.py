@@ -9,3 +9,4 @@ from . import gerar_senhas
 from . import configuracoes
 from . import logs
 from . import relatorios
+from . import kanbanize

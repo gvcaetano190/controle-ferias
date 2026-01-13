@@ -17,7 +17,7 @@ import streamlit as st
 from datetime import datetime
 
 from core.database import Database
-from frontend.modules import dashboard, acessos, sincronizacao, gerar_senhas, configuracoes, logs, relatorios
+from frontend.modules import dashboard, acessos, sincronizacao, gerar_senhas, configuracoes, logs, relatorios, kanbanize, relatorio_kanbanize
 
 # ==================== CONFIGURAÇÃO DA PÁGINA ====================
 
@@ -79,7 +79,7 @@ def main():
         
         pagina = st.radio(
             "Navegação:",
-            ["📊 Dashboard", "📈 Relatórios", "🔐 Controle de Acessos", "🔑 Gerar Senhas", "🔄 Sincronização", "📋 Logs", "⚙️ Configurações"],
+            ["📊 Dashboard", "📈 Relatórios", "🔐 Controle de Acessos", "🔑 Gerar Senhas", "📋 Kanbanize", "📊 Relatório Kanbanize", "🔄 Sincronização", "📋 Logs", "⚙️ Configurações"],
             label_visibility="collapsed"
         )
         
@@ -111,6 +111,10 @@ def main():
         acessos.render(db)
     elif pagina == "🔑 Gerar Senhas":
         gerar_senhas.render(db)
+    elif pagina == "📋 Kanbanize":
+        kanbanize.render(db)
+    elif pagina == "📊 Relatório Kanbanize":
+        relatorio_kanbanize.render(db)
     elif pagina == "🔄 Sincronização":
         sincronizacao.render(db)
     elif pagina == "📋 Logs":

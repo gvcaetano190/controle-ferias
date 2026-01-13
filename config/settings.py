@@ -45,12 +45,23 @@ class Settings:
             "ONETIMESECRET_EMAIL": "gvcaetano190@gmail.com",
             "ONETIMESECRET_API_KEY": "5a19ff2da5a9dac1391971611b9a021d6c3aade8",
             "ONETIMESECRET_ENABLED": "true",
-            "MENSAGEM_MANHA_HOUR": "8",
+            "KANBANIZE_BASE_URL": "https://fmimpressosltda.kanbanize.com",
+            "KANBANIZE_API_KEY": "",
+            "KANBANIZE_ENABLED": "false",
+            "KANBANIZE_DEFAULT_BOARD_ID": "0",
+            "KANBANIZE_SYNC_ENABLED": "false",
+            "KANBANIZE_SYNC_09H30_ENABLED": "false",
+            "KANBANIZE_SYNC_18H00_ENABLED": "false",
+            "MENSAGEM_MANHA_HOUR": "9",
             "MENSAGEM_MANHA_MINUTE": "0",
-            "MENSAGEM_TARDE_HOUR": "17",
+            "MENSAGEM_TARDE_HOUR": "18",
             "MENSAGEM_TARDE_MINUTE": "0",
             "MENSAGEM_MANHA_ENABLED": "false",
             "MENSAGEM_TARDE_ENABLED": "false",
+            "SYNC_NOTIF_HOUR": "13",
+            "SYNC_NOTIF_MINUTE": "0",
+            "SYNC_NOTIF_ENABLED": "false",
+            "EVOLUTION_NUMERO_SYNC": "",
             "NOTIFY_ON_SYNC": "false",
             "NOTIFY_FERIAS_DIAS_ANTES": "1",
             "API_HOST": "0.0.0.0",
@@ -99,14 +110,15 @@ class Settings:
         # Conversão de tipo "Just-In-Time"
         bool_keys = [
             "SYNC_ENABLED", "EVOLUTION_ENABLED", "ONETIMESECRET_ENABLED", 
-            "MENSAGEM_MANHA_ENABLED", "MENSAGEM_TARDE_ENABLED", "NOTIFY_ON_SYNC"
+            "MENSAGEM_MANHA_ENABLED", "MENSAGEM_TARDE_ENABLED", "SYNC_NOTIF_ENABLED", "NOTIFY_ON_SYNC"
         ]
         if name in bool_keys:
             return str(value).lower() == 'true'
 
         int_keys = [
             "SYNC_HOUR", "SYNC_MINUTE", "CACHE_MINUTES", "MENSAGEM_MANHA_HOUR", 
-            "MENSAGEM_MANHA_MINUTE", "MENSAGEM_TARDE_HOUR", "MENSAGEM_TARDE_MINUTE", 
+            "MENSAGEM_MANHA_MINUTE", "MENSAGEM_TARDE_HOUR", "MENSAGEM_TARDE_MINUTE",
+            "SYNC_NOTIF_HOUR", "SYNC_NOTIF_MINUTE",
             "NOTIFY_FERIAS_DIAS_ANTES", "API_PORT"
         ]
         if name in int_keys:

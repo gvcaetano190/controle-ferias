@@ -786,8 +786,17 @@ def _render_relatorio_retorno(database):
         st.warning("Nenhum funcionário encontrado com retorno no período selecionado.")
         return
     
-    # Analisa status dos acessos
-    sistemas = ["AD", "VPN", "Gmail", "Admin", "Metrics", "TOTVS"]
+    # Coleta todos os sistemas de acesso de todos os funcionários retornados
+    sistemas_set = set()
+    for f in retornados:
+        sistemas_set.update(f.get('acessos', {}).keys())
+    
+    # Ordena para manter uma ordem consistente na tabela
+    sistemas = sorted(list(sistemas_set))
+
+    # Se por algum motivo não encontrou nenhum, usa um fallback
+    if not sistemas:
+        sistemas = ["AD", "VPN", "Gmail", "Admin", "Metrics", "TOTVS"]
     
     # Contadores
     total_liberados = 0
@@ -797,13 +806,16 @@ def _render_relatorio_retorno(database):
     for f in retornados:
         acessos = f.get('acessos', {})
         
-        # Verifica se todos os acessos estão liberados ou NA
+        # Verifica se todos os acessos estão liberados
+        # Considera liberado apenas se NÃO HOUVER nenhum BLOQUEADO
+        # NB, NP, - são considerados "não preenchido" (não conta como bloqueado ou liberado)
         acessos_ok = True
         status_acessos = {}
         
         for sistema in sistemas:
-            status = acessos.get(sistema, 'PENDENTE')
+            status = acessos.get(sistema, 'NB')  # Padrão: não preenchido (NB)
             status_acessos[sistema] = status
+            # Só marca como não OK se for BLOQUEADO explicitamente
             if status == 'BLOQUEADO':
                 acessos_ok = False
         
@@ -881,20 +893,10 @@ def _render_relatorio_retorno(database):
     # Tabela
     df = pd.DataFrame(dados_tabela)
     
-    # Estiliza status dos acessos
-    def estilizar_acesso(val):
-        if val == "LIBERADO":
-            return "🟢"
-        elif val == "BLOQUEADO":
-            return "🔴"
-        elif val in ["NA", "NB", "NP"]:
-            return "⚪"
-        else:
-            return "⬜"
-    
+    # Estiliza status dos acessos - retorno
     for sistema in sistemas:
         if sistema in df.columns:
-            df[sistema] = df[sistema].apply(estilizar_acesso)
+            df[sistema] = df[sistema].apply(lambda x: "🟢 LIBERADO" if x == "LIBERADO" else ("🔴 BLOQUEADO" if x == "BLOQUEADO" else ("⚪ NB" if x in ["NA", "NB", "NP"] else "⬜")))
     
     st.dataframe(df, use_container_width=True, hide_index=True)
     
@@ -1020,8 +1022,17 @@ def _render_relatorio_saida(database):
         st.warning("Nenhum funcionário encontrado com saída no período selecionado.")
         return
     
-    # Analisa status dos acessos
-    sistemas = ["AD", "VPN", "Gmail", "Admin", "Metrics", "TOTVS"]
+    # Coleta todos os sistemas de acesso de todos os funcionários
+    sistemas_set = set()
+    for f in saidas:
+        sistemas_set.update(f.get('acessos', {}).keys())
+    
+    # Ordena para manter uma ordem consistente na tabela
+    sistemas = sorted(list(sistemas_set))
+
+    # Se por algum motivo não encontrou nenhum, usa um fallback
+    if not sistemas:
+        sistemas = ["AD", "VPN", "Gmail", "Admin", "Metrics", "TOTVS"]
     
     # Contadores
     total_bloqueados = 0
@@ -1033,25 +1044,27 @@ def _render_relatorio_saida(database):
         acessos = f.get('acessos', {})
         
         # Verifica se está em férias atualmente
-        data_retorno = None
-        try:
-            data_retorno = datetime.strptime(f['data_retorno'], '%Y-%m-%d') if f.get('data_retorno') else None
-        except:
-            pass
+        data_saida = datetime.strptime(f['data_saida'], '%Y-%m-%d') if f.get('data_saida') else None
+        data_retorno = datetime.strptime(f['data_retorno'], '%Y-%m-%d') if f.get('data_retorno') else None
         
         em_ferias = False
-        if data_retorno and data_retorno >= hoje:
+        if data_saida and data_retorno and (data_saida.date() <= hoje.date() <= data_retorno.date()):
             em_ferias = True
             total_em_ferias += 1
         
         # Verifica se todos os acessos estão bloqueados ou NA
+        # NB, NP, - são considerados "não preenchido"
         acessos_ok = True
         status_acessos = {}
         
         for sistema in sistemas:
-            status = acessos.get(sistema, 'PENDENTE')
+            status = acessos.get(sistema, 'NB')  # Padrão: não preenchido (NB)
             status_acessos[sistema] = status
-            if status == 'LIBERADO' and em_ferias:
+            # Se em férias: LIBERADO é problema. NB/NP/- são não preenchido (não é erro)
+            # Se já retornou: BLOQUEADO é problema. NB/NP/- são não preenchido (OK)
+            if em_ferias and status == 'LIBERADO':
+                acessos_ok = False
+            elif not em_ferias and status == 'BLOQUEADO':
                 acessos_ok = False
             elif status == 'PENDENTE':
                 acessos_ok = False
@@ -1151,20 +1164,10 @@ def _render_relatorio_saida(database):
     # Tabela
     df = pd.DataFrame(dados_tabela)
     
-    # Estiliza status dos acessos
-    def estilizar_acesso(val):
-        if val == "LIBERADO":
-            return "🟢"
-        elif val == "BLOQUEADO":
-            return "🔴"
-        elif val in ["NA", "NB", "NP"]:
-            return "⚪"
-        else:
-            return "⬜"
-    
+    # Estiliza status dos acessos - saida
     for sistema in sistemas:
         if sistema in df.columns:
-            df[sistema] = df[sistema].apply(estilizar_acesso)
+            df[sistema] = df[sistema].apply(lambda x: "🟢 LIBERADO" if x == "LIBERADO" else ("🔴 BLOQUEADO" if x == "BLOQUEADO" else ("⚪ NB" if x in ["NA", "NB", "NP"] else "⬜")))
     
     st.dataframe(df, use_container_width=True, hide_index=True)
     

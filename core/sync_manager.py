@@ -312,7 +312,7 @@ class SyncManager:
     def _mapear_status(self, valor: Any) -> str:
         """Mapeia valor para status padronizado."""
         if pd.isna(valor) or str(valor).strip() in ["", "nan"]:
-            return "PENDENTE"
+            return "NB"  # Não preenchido
         
         valor_str = str(valor).upper().strip()
         
@@ -325,10 +325,11 @@ class SyncManager:
         padroes_sem_acesso_str = settings.PADROES_SEM_ACESSO if hasattr(settings, 'PADROES_SEM_ACESSO') else "N/P,N\\A,NA,N/A,NP,-,NB"
         padroes_sem_acesso = [p.strip().upper() for p in padroes_sem_acesso_str.split(",")]
         
+        # Se for um padrão de "sem acesso", mantém o valor original (pode ser -, NA, NP, etc)
         if valor_str in padroes_sem_acesso:
-            return "NA"
+            return valor_str  # Retorna o valor original mapeado para uppercase
         
-        return "PENDENTE"
+        return "NB"  # Padrão: não preenchido
     
     def _extrair_mes_ano(self, nome_aba: str) -> Tuple[Optional[int], Optional[int]]:
         """Extrai mês e ano do nome da aba."""
@@ -527,9 +528,9 @@ class SyncManager:
                         if len(row) > idx:
                             acessos[sistema] = self._mapear_status(row[idx].value)
                         else:
-                            acessos[sistema] = "PENDENTE"
+                            acessos[sistema] = "NB"  # Coluna existe mas célula vazia
                     else:
-                        acessos[sistema] = "NA"
+                        acessos[sistema] = "NB"  # Coluna não encontrada
                 
                 # Monta registro
                 funcionarios.append({
@@ -646,6 +647,7 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
+
 
 
 

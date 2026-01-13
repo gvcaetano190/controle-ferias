@@ -147,6 +147,16 @@ EVOLUTION_ENABLED=false
                         f.write(f"MENSAGEM_TARDE_MINUTE={config_atual.get('MENSAGEM_TARDE_MINUTE', '0')}\n")
                     f.write("\n")
                 
+                # Sincronização com Notificação
+                if config_atual.get('SYNC_NOTIF_ENABLED'):
+                    f.write("# Sincronização com Notificação\n")
+                    f.write(f"SYNC_NOTIF_ENABLED={config_atual.get('SYNC_NOTIF_ENABLED', 'false')}\n")
+                    f.write(f"SYNC_NOTIF_HOUR={config_atual.get('SYNC_NOTIF_HOUR', '13')}\n")
+                    f.write(f"SYNC_NOTIF_MINUTE={config_atual.get('SYNC_NOTIF_MINUTE', '0')}\n")
+                    if config_atual.get('EVOLUTION_NUMERO_SYNC'):
+                        f.write(f"EVOLUTION_NUMERO_SYNC={config_atual.get('EVOLUTION_NUMERO_SYNC')}\n")
+                    f.write("\n")
+                
                 # Notificações
                 f.write("# Notificações\n")
                 f.write(f"NOTIFY_ON_SYNC={config_atual.get('NOTIFY_ON_SYNC', defaults['NOTIFY_ON_SYNC'])}\n")
@@ -158,6 +168,24 @@ EVOLUTION_ENABLED=false
                 f.write(f"ONETIMESECRET_ENABLED={config_atual.get('ONETIMESECRET_ENABLED', defaults['ONETIMESECRET_ENABLED'])}\n")
                 f.write(f"ONETIMESECRET_EMAIL={config_atual.get('ONETIMESECRET_EMAIL', defaults['ONETIMESECRET_EMAIL'])}\n")
                 f.write(f"ONETIMESECRET_API_KEY={config_atual.get('ONETIMESECRET_API_KEY', defaults['ONETIMESECRET_API_KEY'])}\n")
+                f.write("\n")
+                
+                # Kanbanize
+                f.write("# Kanbanize API\n")
+                f.write(f"KANBANIZE_ENABLED={config_atual.get('KANBANIZE_ENABLED', 'false')}\n")
+                if config_atual.get('KANBANIZE_BASE_URL'):
+                    f.write(f"KANBANIZE_BASE_URL={config_atual.get('KANBANIZE_BASE_URL')}\n")
+                if config_atual.get('KANBANIZE_API_KEY'):
+                    f.write(f"KANBANIZE_API_KEY={config_atual.get('KANBANIZE_API_KEY')}\n")
+                if config_atual.get('KANBANIZE_DEFAULT_BOARD_ID'):
+                    f.write(f"KANBANIZE_DEFAULT_BOARD_ID={config_atual.get('KANBANIZE_DEFAULT_BOARD_ID', '0')}\n")
+                
+                # Kanbanize Sync
+                if 'KANBANIZE_SYNC_ENABLED' in config_atual:
+                    f.write(f"KANBANIZE_SYNC_ENABLED={config_atual.get('KANBANIZE_SYNC_ENABLED', 'false')}\n")
+                    f.write(f"KANBANIZE_SYNC_09H30_ENABLED={config_atual.get('KANBANIZE_SYNC_09H30_ENABLED', 'false')}\n")
+                    f.write(f"KANBANIZE_SYNC_18H00_ENABLED={config_atual.get('KANBANIZE_SYNC_18H00_ENABLED', 'false')}\n")
+
                 f.write("\n")
                 
                 # FastAPI (futuro) - só escreve se diferentes do padrão
