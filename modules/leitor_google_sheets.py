@@ -5,11 +5,17 @@
 
 import pandas as pd
 from typing import Dict, List, Optional
-import re
 from datetime import datetime
 import tempfile
 from pathlib import Path
 import urllib.request
+import re
+import sys
+
+# Adiciona o diretório raiz ao path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from utils.google_sheets import extrair_sheet_id, construir_url_exportacao
 
 
 class LeitorGoogleSheets:
@@ -25,14 +31,6 @@ class LeitorGoogleSheets:
         self.url = url
         self._dados: Dict[str, pd.DataFrame] = {}
     
-    def _extrair_sheet_id(self, url: str) -> Optional[str]:
-        """Extrai o ID da planilha da URL."""
-        # Padrão: https://docs.google.com/spreadsheets/d/SHEET_ID/edit
-        match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', url)
-        if match:
-            return match.group(1)
-        return None
-    
     def _converter_url_para_csv(self, url: str, gid: Optional[str] = None) -> str:
         """
         Converte URL do Google Sheets para URL de exportação CSV.
@@ -44,17 +42,11 @@ class LeitorGoogleSheets:
         Returns:
             URL para baixar como CSV
         """
-        sheet_id = self._extrair_sheet_id(url)
+        sheet_id = extrair_sheet_id(url)
         if not sheet_id:
             raise ValueError(f"URL inválida do Google Sheets: {url}")
         
-        # URL base para exportação CSV
-        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-        
-        if gid:
-            csv_url += f"&gid={gid}"
-        
-        return csv_url
+        return construir_url_exportacao(sheet_id, formato="csv", gid=gid)
     
     def _converter_url_para_excel(self, url: str) -> str:
         """
@@ -66,14 +58,11 @@ class LeitorGoogleSheets:
         Returns:
             URL para baixar como Excel
         """
-        sheet_id = self._extrair_sheet_id(url)
+        sheet_id = extrair_sheet_id(url)
         if not sheet_id:
             raise ValueError(f"URL inválida do Google Sheets: {url}")
         
-        # URL para exportação Excel (formato xlsx)
-        excel_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
-        
-        return excel_url
+        return construir_url_exportacao(sheet_id, formato="xlsx")
     
     def baixar_como_excel(self, salvar_em_pasta: Optional[Path] = None) -> Optional[Path]:
         """

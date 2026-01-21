@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
 from core.sync_manager import SyncManager
+from utils.formatadores import FORMATO_ISO, FORMATO_HORA, agora_formatado
 
 
 def _eh_dia_util():
@@ -42,7 +43,7 @@ def _verificar_job_executado(job_nome: str) -> bool:
         True se já foi executado hoje, False caso contrário
     """
     controle_file = _get_controle_file()
-    hoje_str = datetime.now().strftime('%Y-%m-%d')
+    hoje_str = agora_formatado(FORMATO_ISO)
     
     if not controle_file.exists():
         return False
@@ -68,7 +69,7 @@ def _marcar_job_executado(job_nome: str):
         job_nome: Nome do job (ex: 'manha', 'tarde', 'sync', 'ferias')
     """
     controle_file = _get_controle_file()
-    hoje_str = datetime.now().strftime('%Y-%m-%d')
+    hoje_str = agora_formatado(FORMATO_ISO)
     
     # Lê jobs já executados hoje
     jobs_executados = set()
@@ -91,6 +92,33 @@ def _marcar_job_executado(job_nome: str):
     except Exception as e:
         print(f"   ⚠️ Erro ao salvar controle de jobs: {e}")
 
+
+def _notificar_kanbanize(EvolutionAPI, mensagem: str):
+    """
+    Envia notificação WhatsApp sobre sincronização Kanbanize.
+    
+    Args:
+        EvolutionAPI: Classe da API Evolution (passada para evitar import circular)
+        mensagem: Mensagem a ser enviada
+    """
+    if not settings.EVOLUTION_ENABLED or not settings.EVOLUTION_NUMERO_SYNC:
+        return
+    
+    try:
+        api_evolution = EvolutionAPI(
+            url=settings.EVOLUTION_API_URL,
+            numero=settings.EVOLUTION_NUMERO_SYNC,
+            api_key=settings.EVOLUTION_API_KEY
+        )
+        resultado = api_evolution.enviar_mensagem(mensagem)
+        
+        if resultado["sucesso"]:
+            print(f"   📱 Notificação enviada para {api_evolution.numero}")
+        else:
+            print(f"   ⚠️ Falha ao notificar: {resultado.get('mensagem')}")
+    except Exception as e:
+        print(f"   ⚠️ Erro ao enviar notificação: {e}")
+
 # Tenta importar APScheduler, senão usa fallback simples
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -110,10 +138,10 @@ def job_sincronizacao():
     Também envia notificação do resultado via WhatsApp.
     """
     if not _eh_dia_util():
-        print(f"\n🔄 [{datetime.now().strftime('%H:%M:%S')}] Sincronização pulada (fim de semana)")
+        print(f"\n🔄 [{agora_formatado(FORMATO_HORA)}] Sincronização pulada (fim de semana)")
         return
     
-    print(f"\n🔄 [{datetime.now().strftime('%H:%M:%S')}] Iniciando sincronização agendada...")
+    print(f"\n🔄 [{agora_formatado(FORMATO_HORA)}] Iniciando sincronização agendada...")
     
     try:
         sync = SyncManager()
@@ -128,8 +156,8 @@ def job_sincronizacao():
         else:
             print(f"   ❌ Erro: {resultado['message']}")
         
-        # Envia notificação se configurado
-        if settings.SYNC_NOTIF_ENABLED:
+        # Envia notificação se Evolution API estiver habilitada
+        if settings.EVOLUTION_ENABLED:
             try:
                 from integrations.evolution_api import EvolutionAPI
                 
@@ -139,7 +167,7 @@ def job_sincronizacao():
                     api_key=settings.EVOLUTION_API_KEY
                 )
                 
-                resultado_notif = api.enviar_mensagem_sync(resultado)
+                resultado_notif = api.enviar_mensagem_sync(resultado, origem="automatica")
                 
                 if resultado_notif["sucesso"]:
                     print(f"   📱 Notificação enviada para: {api.numero}")
@@ -168,10 +196,10 @@ def job_verificar_ferias_proximas():
     Apenas registra no log, NÃO envia mensagens (a mensagem matutina já cobre isso).
     """
     if not _eh_dia_util():
-        print(f"\n📅 [{datetime.now().strftime('%H:%M:%S')}] Verificação de férias pulada (fim de semana)")
+        print(f"\n📅 [{agora_formatado(FORMATO_HORA)}] Verificação de férias pulada (fim de semana)")
         return
     
-    print(f"\n📅 [{datetime.now().strftime('%H:%M:%S')}] Verificando férias próximas...")
+    print(f"\n📅 [{agora_formatado(FORMATO_HORA)}] Verificando férias próximas...")
     
     try:
         from core.database import Database
@@ -209,15 +237,15 @@ def job_mensagem_manha():
         return
     
     if not _eh_dia_util():
-        print(f"\n🌅 [{datetime.now().strftime('%H:%M:%S')}] Mensagem matutina pulada (fim de semana)")
+        print(f"\n🌅 [{agora_formatado(FORMATO_HORA)}] Mensagem matutina pulada (fim de semana)")
         return
     
     # Verifica se já foi executado hoje (evita duplicação)
     if _verificar_job_executado("manha"):
-        print(f"\n🌅 [{datetime.now().strftime('%H:%M:%S')}] Mensagem matutina já enviada hoje, pulando...")
+        print(f"\n🌅 [{agora_formatado(FORMATO_HORA)}] Mensagem matutina já enviada hoje, pulando...")
         return
     
-    print(f"\n🌅 [{datetime.now().strftime('%H:%M:%S')}] Enviando mensagem matutina...")
+    print(f"\n🌅 [{agora_formatado(FORMATO_HORA)}] Enviando mensagem matutina...")
     
     try:
         from integrations.evolution_api import MensagensAutomaticas, EvolutionAPI
@@ -244,15 +272,15 @@ def job_mensagem_tarde():
         return
     
     if not _eh_dia_util():
-        print(f"\n🌆 [{datetime.now().strftime('%H:%M:%S')}] Mensagem vespertina pulada (fim de semana)")
+        print(f"\n🌆 [{agora_formatado(FORMATO_HORA)}] Mensagem vespertina pulada (fim de semana)")
         return
     
     # Verifica se já foi executado hoje (evita duplicação)
     if _verificar_job_executado("tarde"):
-        print(f"\n🌆 [{datetime.now().strftime('%H:%M:%S')}] Mensagem vespertina já enviada hoje, pulando...")
+        print(f"\n🌆 [{agora_formatado(FORMATO_HORA)}] Mensagem vespertina já enviada hoje, pulando...")
         return
     
-    print(f"\n🌆 [{datetime.now().strftime('%H:%M:%S')}] Enviando mensagem vespertina...")
+    print(f"\n🌆 [{agora_formatado(FORMATO_HORA)}] Enviando mensagem vespertina...")
     
     try:
         from integrations.evolution_api import MensagensAutomaticas, EvolutionAPI
@@ -279,16 +307,18 @@ def job_kanbanize_sync_09h30():
         return
     
     if not _eh_dia_util():
-        print(f"\n📋 [{datetime.now().strftime('%H:%M:%S')}] Sync Kanbanize 09:30 pulada (fim de semana)")
+        print(f"\n📋 [{agora_formatado(FORMATO_HORA)}] Sync Kanbanize 09:30 pulada (fim de semana)")
         return
     
-    print(f"\n📋 [{datetime.now().strftime('%H:%M:%S')}] Sincronizando Kanbanize (09:30)...")
+    print(f"\n📋 [{agora_formatado(FORMATO_HORA)}] Sincronizando Kanbanize (09:30)...")
+    
+    from integrations.kanbanize import KanbanizeAPI
+    from integrations.evolution_api import EvolutionAPI
+    from core.database import Database
+    
+    db = Database()
     
     try:
-        from integrations.kanbanize import KanbanizeAPI
-        from integrations.evolution_api import EvolutionAPI
-        from core.database import Database
-        
         # Conecta na API e busca cards
         api = KanbanizeAPI(settings.KANBANIZE_BASE_URL, settings.KANBANIZE_API_KEY)
         board_id = int(settings.KANBANIZE_DEFAULT_BOARD_ID)
@@ -299,34 +329,31 @@ def job_kanbanize_sync_09h30():
         )
         
         if not resultado.get("sucesso"):
-            print(f"   ❌ Erro na API Kanbanize: {resultado.get('mensagem')}")
+            erro_msg = resultado.get('mensagem', 'Erro desconhecido')
+            print(f"   ❌ Erro na API Kanbanize: {erro_msg}")
+            
+            # Notifica erro via WhatsApp
+            _notificar_kanbanize(EvolutionAPI, f"❌ Erro Kanbanize (09:30): {erro_msg}")
+            
+            db.registrar_log(
+                tipo="kanbanize",
+                categoria="Sincronização",
+                status="erro",
+                mensagem="Erro na API Kanbanize 09:30",
+                detalhes=erro_msg,
+                origem="scheduler"
+            )
             return
         
         cards = resultado.get("dados", [])
         
         # Salva no banco
-        db = Database()
         cards_salvos = db.salvar_cards_kanbanize(cards, board_id=board_id)
         
         print(f"   ✅ {cards_salvos} cards sincronizados")
         
-        # Envia mensagem de notificação
-        if settings.EVOLUTION_ENABLED and settings.EVOLUTION_NUMERO_SYNC:
-            try:
-                api_evolution = EvolutionAPI(
-                    url=settings.EVOLUTION_API_URL,
-                    numero=settings.EVOLUTION_NUMERO_SYNC,
-                    api_key=settings.EVOLUTION_API_KEY
-                )
-                mensagem = f"✅ Kanbanize sincronizado (09:30): {cards_salvos} cards atualizados"
-                resultado_msg = api_evolution.enviar_mensagem(mensagem)
-                
-                if resultado_msg["sucesso"]:
-                    print(f"   📱 Notificação enviada para {api_evolution.numero}")
-                else:
-                    print(f"   ⚠️ Falha ao notificar: {resultado_msg.get('mensagem')}")
-            except Exception as e:
-                print(f"   ⚠️ Erro ao enviar notificação: {e}")
+        # Envia mensagem de sucesso
+        _notificar_kanbanize(EvolutionAPI, f"✅ Kanbanize sincronizado (09:30): {cards_salvos} cards atualizados")
         
         # Registra log
         db.registrar_log(
@@ -340,6 +367,10 @@ def job_kanbanize_sync_09h30():
         
     except Exception as e:
         print(f"   ❌ Erro: {e}")
+        
+        # Notifica erro via WhatsApp
+        _notificar_kanbanize(EvolutionAPI, f"❌ Erro Kanbanize (09:30): {str(e)[:100]}")
+        
         db.registrar_log(
             tipo="kanbanize",
             categoria="Sincronização",
@@ -356,16 +387,18 @@ def job_kanbanize_sync_18h00():
         return
     
     if not _eh_dia_util():
-        print(f"\n📋 [{datetime.now().strftime('%H:%M:%S')}] Sync Kanbanize 18:00 pulada (fim de semana)")
+        print(f"\n📋 [{agora_formatado(FORMATO_HORA)}] Sync Kanbanize 18:00 pulada (fim de semana)")
         return
     
-    print(f"\n📋 [{datetime.now().strftime('%H:%M:%S')}] Sincronizando Kanbanize (18:00)...")
+    print(f"\n📋 [{agora_formatado(FORMATO_HORA)}] Sincronizando Kanbanize (18:00)...")
+    
+    from integrations.kanbanize import KanbanizeAPI
+    from integrations.evolution_api import EvolutionAPI
+    from core.database import Database
+    
+    db = Database()
     
     try:
-        from integrations.kanbanize import KanbanizeAPI
-        from integrations.evolution_api import EvolutionAPI
-        from core.database import Database
-        
         # Conecta na API e busca cards
         api = KanbanizeAPI(settings.KANBANIZE_BASE_URL, settings.KANBANIZE_API_KEY)
         board_id = int(settings.KANBANIZE_DEFAULT_BOARD_ID)
@@ -376,34 +409,31 @@ def job_kanbanize_sync_18h00():
         )
         
         if not resultado.get("sucesso"):
-            print(f"   ❌ Erro na API Kanbanize: {resultado.get('mensagem')}")
+            erro_msg = resultado.get('mensagem', 'Erro desconhecido')
+            print(f"   ❌ Erro na API Kanbanize: {erro_msg}")
+            
+            # Notifica erro via WhatsApp
+            _notificar_kanbanize(EvolutionAPI, f"❌ Erro Kanbanize (18:00): {erro_msg}")
+            
+            db.registrar_log(
+                tipo="kanbanize",
+                categoria="Sincronização",
+                status="erro",
+                mensagem="Erro na API Kanbanize 18:00",
+                detalhes=erro_msg,
+                origem="scheduler"
+            )
             return
         
         cards = resultado.get("dados", [])
         
         # Salva no banco
-        db = Database()
         cards_salvos = db.salvar_cards_kanbanize(cards, board_id=board_id)
         
         print(f"   ✅ {cards_salvos} cards sincronizados")
         
-        # Envia mensagem de notificação
-        if settings.EVOLUTION_ENABLED and settings.EVOLUTION_NUMERO_SYNC:
-            try:
-                api_evolution = EvolutionAPI(
-                    url=settings.EVOLUTION_API_URL,
-                    numero=settings.EVOLUTION_NUMERO_SYNC,
-                    api_key=settings.EVOLUTION_API_KEY
-                )
-                mensagem = f"✅ Kanbanize sincronizado (18:00): {cards_salvos} cards atualizados"
-                resultado_msg = api_evolution.enviar_mensagem(mensagem)
-                
-                if resultado_msg["sucesso"]:
-                    print(f"   📱 Notificação enviada para {api_evolution.numero}")
-                else:
-                    print(f"   ⚠️ Falha ao notificar: {resultado_msg.get('mensagem')}")
-            except Exception as e:
-                print(f"   ⚠️ Erro ao enviar notificação: {e}")
+        # Envia mensagem de sucesso
+        _notificar_kanbanize(EvolutionAPI, f"✅ Kanbanize sincronizado (18:00): {cards_salvos} cards atualizados")
         
         # Registra log
         db.registrar_log(
@@ -417,6 +447,10 @@ def job_kanbanize_sync_18h00():
         
     except Exception as e:
         print(f"   ❌ Erro: {e}")
+        
+        # Notifica erro via WhatsApp
+        _notificar_kanbanize(EvolutionAPI, f"❌ Erro Kanbanize (18:00): {str(e)[:100]}")
+        
         db.registrar_log(
             tipo="kanbanize",
             categoria="Sincronização",

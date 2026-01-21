@@ -898,7 +898,7 @@ def _render_relatorio_retorno(database):
         if sistema in df.columns:
             df[sistema] = df[sistema].apply(lambda x: "🟢 LIBERADO" if x == "LIBERADO" else ("🔴 BLOQUEADO" if x == "BLOQUEADO" else ("⚪ NB" if x in ["NA", "NB", "NP"] else "⬜")))
     
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
     
     # Exportar CSV
     if st.button("📥 Exportar CSV", key="export_retorno"):
@@ -1169,7 +1169,7 @@ def _render_relatorio_saida(database):
         if sistema in df.columns:
             df[sistema] = df[sistema].apply(lambda x: "🟢 LIBERADO" if x == "LIBERADO" else ("🔴 BLOQUEADO" if x == "BLOQUEADO" else ("⚪ NB" if x in ["NA", "NB", "NP"] else "⬜")))
     
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
     
     # Exportar CSV
     if st.button("📥 Exportar CSV", key="export_saida"):

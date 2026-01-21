@@ -1,4 +1,3 @@
-cat << 'EOF' > ./docker-manager.sh
 #!/bin/bash
 # ===========================================
 # Gerenciador Docker - Sistema de Controle de Férias
@@ -38,6 +37,8 @@ show_help() {
     echo "  status        Mostra status dos containers"
     echo "  shell         Acessa shell do container frontend"
     echo "  sync          Executa sincronização manual"
+    echo "  enable-restart   Habilita restart automático após reboot do host"
+    echo "  disable-restart  Desabilita restart automático"
     echo "  clean         Remove containers, volumes e imagens (CUIDADO!)"
     echo "  help          Mostra esta ajuda"
     echo ""
@@ -106,6 +107,21 @@ case "${1:-help}" in
         $DOCKER_COMPOSE exec frontend ./scripts/sync.sh
         ;;
     
+    enable-restart)
+        echo "🔧 Habilitando restart automático após reboot do host..."
+        docker update --restart=always controle-ferias-frontend
+        docker update --restart=always controle-ferias-scheduler
+        echo "✅ Restart automático habilitado!"
+        echo "   Os containers vão reiniciar automaticamente se o host reiniciar."
+        ;;
+    
+    disable-restart)
+        echo "🔧 Desabilitando restart automático..."
+        docker update --restart=no controle-ferias-frontend
+        docker update --restart=no controle-ferias-scheduler
+        echo "✅ Restart automático desabilitado!"
+        ;;
+    
     clean)
         echo "⚠️  ATENÇÃO: Isso vai remover TUDO (containers, volumes, imagens)!"
         read -p "Tem certeza? (digite 'sim' para confirmar): " confirm
@@ -129,14 +145,5 @@ case "${1:-help}" in
         exit 1
         ;;
 esac
-EOF
-
-# Aplica correção de quebra de linha preventivamente (caso seu terminal cole errado)
-sed -i 's/\r$//' ./docker-manager.sh
-
-# Dá permissão de execução
-chmod +x ./docker-manager.sh
-
-echo "✅ Arquivo recriado com sucesso e formatado para Linux!"
 
 

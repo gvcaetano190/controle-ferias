@@ -155,6 +155,9 @@ class Database:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_kanbanize_card_id ON kanbanize_cards(card_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_kanbanize_workflow ON kanbanize_cards(workflow_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_kanbanize_column ON kanbanize_cards(column_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kanbanize_board ON kanbanize_cards(board_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kanbanize_board_workflow ON kanbanize_cards(board_id, workflow_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kanbanize_board_column ON kanbanize_cards(board_id, column_id)")
         
         # Migração: adiciona coluna in_current_position_since se não existir
         try:

@@ -6,20 +6,13 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from typing import Dict, List
+from pathlib import Path
+import sys
 
+# Adiciona o diretório raiz ao path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-def formatar_data(data_str: str) -> str:
-    """Formata data para DD/MM/YYYY."""
-    if not data_str:
-        return ""
-    try:
-        if 'T' in str(data_str):
-            dt = datetime.fromisoformat(data_str.replace('Z', '+00:00'))
-        else:
-            dt = datetime.strptime(str(data_str).split()[0], '%Y-%m-%d')
-        return dt.strftime('%d/%m/%Y')
-    except:
-        return str(data_str)
+from utils.formatadores import formatar_data_iso as formatar_data
 
 
 def status_emoji(status: str) -> str:

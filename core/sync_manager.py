@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
 from core.database import Database
+from utils.google_sheets import extrair_sheet_id, construir_url_exportacao
 
 
 class SyncManager:
@@ -35,18 +36,6 @@ class SyncManager:
         self.abas_processadas: List[Dict] = []
     
     # ==================== DOWNLOAD ====================
-    
-    def _extrair_sheet_id(self, url: str) -> Optional[str]:
-        """Extrai o ID da planilha da URL."""
-        patterns = [
-            r'/spreadsheets/d/([a-zA-Z0-9-_]+)',
-            r'id=([a-zA-Z0-9-_]+)',
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(1)
-        return None
     
     def baixar_planilha(self, forcar: bool = False) -> Optional[Path]:
         """
@@ -75,11 +64,14 @@ class SyncManager:
         print("   ⬇️  Baixando do Google Sheets...")
         
         try:
-            sheet_id = self._extrair_sheet_id(settings.GOOGLE_SHEETS_URL)
+            sheet_id = extrair_sheet_id(settings.GOOGLE_SHEETS_URL)
             if not sheet_id:
                 raise ValueError("URL inválida do Google Sheets")
             
-            excel_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+            excel_url = construir_url_exportacao(sheet_id, formato="xlsx")
+            
+            # Garante que o diretório existe
+            settings.DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             nome_arquivo = f"planilha_{timestamp}.xlsx"

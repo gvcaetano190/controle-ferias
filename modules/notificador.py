@@ -6,6 +6,13 @@
 
 from typing import List
 from datetime import datetime
+from pathlib import Path
+import sys
+
+# Adiciona o diretório raiz ao path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from utils.formatadores import formatar_data, agora_formatado, FORMATO_DATA_BR, FORMATO_DATA_HORA_BR
 from .processador import Funcionario
 
 
@@ -15,16 +22,12 @@ class Notificador:
     def __init__(self):
         self.mensagens: List[str] = []
     
-    def formatar_data(self, data: datetime) -> str:
-        """Formata data para exibição."""
-        return data.strftime("%d/%m/%Y")
-    
     def gerar_mensagem_saida_hoje(self, funcionarios: List[Funcionario]) -> str:
         """Gera mensagem para quem sai hoje."""
         if not funcionarios:
             return "✅ Nenhum funcionário saindo de férias hoje."
         
-        hoje = datetime.now().strftime("%d/%m/%Y")
+        hoje = agora_formatado(FORMATO_DATA_BR)
         linhas = [
             f"🏖️ *SAINDO DE FÉRIAS HOJE ({hoje})*",
             f"Total: {len(funcionarios)} pessoa(s)",
@@ -34,7 +37,7 @@ class Notificador:
         for i, f in enumerate(funcionarios, 1):
             linhas.append(
                 f"{i}. *{f.nome}*\n"
-                f"   📅 Retorno: {self.formatar_data(f.data_retorno)}\n"
+                f"   📅 Retorno: {formatar_data(f.data_retorno)}\n"
                 f"   👤 Gestor: {f.gestor}\n"
                 f"   📋 Motivo: {f.motivo}"
             )
@@ -47,7 +50,7 @@ class Notificador:
             return "✅ Nenhum funcionário retornando amanhã."
         
         from datetime import timedelta
-        amanha = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
+        amanha = (datetime.now() + timedelta(days=1)).strftime(FORMATO_DATA_BR)
         
         linhas = [
             f"🔙 *RETORNANDO AMANHÃ ({amanha})*",
@@ -59,7 +62,7 @@ class Notificador:
             dias = f.dias_ausencia()
             linhas.append(
                 f"{i}. *{f.nome}*\n"
-                f"   📅 Saiu em: {self.formatar_data(f.data_saida)}\n"
+                f"   📅 Saiu em: {formatar_data(f.data_saida)}\n"
                 f"   ⏱️ Dias ausente: {dias}\n"
                 f"   👤 Gestor: {f.gestor}"
             )
@@ -68,7 +71,7 @@ class Notificador:
     
     def gerar_resumo_diario(self, saindo: List[Funcionario], voltando: List[Funcionario]) -> str:
         """Gera resumo diário completo."""
-        hoje = datetime.now().strftime("%d/%m/%Y às %H:%M")
+        hoje = agora_formatado(FORMATO_DATA_HORA_BR)
         
         linhas = [
             "=" * 50,

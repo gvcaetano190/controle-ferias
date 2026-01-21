@@ -142,6 +142,154 @@ class EvolutionAPI:
                 "mensagem": f"Erro inesperado: {str(e)}"
             }
     
+    def enviar_media(self, media_bytes: bytes, mediatype: str = "image", 
+                     caption: str = None, filename: str = None, numero: str = None) -> Dict:
+        """
+        Envia mídia (imagem, documento, vídeo, áudio) via WhatsApp.
+        
+        Args:
+            media_bytes: Bytes da mídia a enviar
+            mediatype: Tipo da mídia - "image", "document", "video", "audio"
+            caption: Legenda opcional para a mídia
+            filename: Nome do arquivo (obrigatório para documentos)
+            numero: Número/grupo (opcional, usa o configurado se não fornecido)
+            
+        Returns:
+            Dict com resultado: {"sucesso": bool, "mensagem": str}
+        """
+        import base64
+        
+        if not self.enabled:
+            return {
+                "sucesso": False,
+                "mensagem": "Evolution API desabilitada"
+            }
+        
+        if not HAS_REQUESTS:
+            return {
+                "sucesso": False,
+                "mensagem": "requests não instalado. Use: pip install requests"
+            }
+        
+        if not self.url:
+            return {
+                "sucesso": False,
+                "mensagem": "URL da Evolution API não configurada"
+            }
+        
+        numero_final = numero or self.numero
+        if not numero_final:
+            return {
+                "sucesso": False,
+                "mensagem": "Número/grupo do WhatsApp não configurado"
+            }
+        
+        # Formata o número (mesma lógica do enviar_mensagem)
+        numero_formatado = str(numero_final).strip()
+        if "@" in numero_formatado:
+            numero_final = numero_formatado
+        else:
+            numero_limpo = ''.join(filter(str.isdigit, numero_formatado))
+            if not numero_limpo.startswith("55") and len(numero_limpo) >= 10:
+                numero_limpo = "55" + numero_limpo
+            numero_final = numero_limpo
+        
+        # Constrói URL para sendMedia (substitui sendText por sendMedia na URL base)
+        url_media = self.url.replace("/sendText/", "/sendMedia/")
+        
+        try:
+            # Converte bytes para base64 PURO (sem prefixo data URI)
+            # A Evolution API usa class-validator isBase64() que espera apenas base64 puro
+            media_base64 = base64.b64encode(media_bytes).decode('utf-8')
+            
+            # Determina mimetype
+            if mediatype == "image":
+                mimetype_str = "image/png"
+                default_filename = "image.png"
+            elif mediatype == "document":
+                if filename and filename.endswith('.pdf'):
+                    mimetype_str = "application/pdf"
+                elif filename and filename.endswith('.xlsx'):
+                    mimetype_str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                else:
+                    mimetype_str = "application/octet-stream"
+                default_filename = filename or "documento.pdf"
+            elif mediatype == "video":
+                mimetype_str = "video/mp4"
+                default_filename = "video.mp4"
+            elif mediatype == "audio":
+                mimetype_str = "audio/mp4"
+                default_filename = "audio.mp4"
+            else:
+                mimetype_str = "application/octet-stream"
+                default_filename = "file"
+            
+            # Payload seguindo a documentação da Evolution API
+            # media: deve ser URL ou base64 PURO (sem data:...)
+            payload = {
+                "number": numero_final,
+                "mediatype": mediatype,
+                "media": media_base64,  # Base64 puro sem prefixo
+                "mimetype": mimetype_str,
+                "fileName": filename or default_filename
+            }
+            
+            # Adiciona caption se fornecido
+            if caption:
+                payload["caption"] = caption
+            
+            headers = {
+                "Content-Type": "application/json"
+            }
+            
+            if self.api_key and self.api_key.strip():
+                headers["apikey"] = self.api_key.strip()
+            
+            # Debug: mostra informações da requisição
+            print(f"[DEBUG] URL: {url_media}")
+            print(f"[DEBUG] Number: {numero_final}")
+            print(f"[DEBUG] Mediatype: {mediatype}")
+            print(f"[DEBUG] Mimetype: {mimetype_str}")
+            print(f"[DEBUG] FileName: {payload.get('fileName')}")
+            print(f"[DEBUG] Base64 length: {len(media_base64)}")
+            print(f"[DEBUG] Base64 first 50 chars: {media_base64[:50]}")
+            
+            response = requests.post(
+                url_media,
+                json=payload,
+                headers=headers,
+                timeout=60  # Timeout maior para upload de mídia
+            )
+            
+            if response.status_code in [200, 201]:
+                return {
+                    "sucesso": True,
+                    "mensagem": "Mídia enviada com sucesso",
+                    "status_code": response.status_code
+                }
+            else:
+                return {
+                    "sucesso": False,
+                    "mensagem": f"Erro HTTP {response.status_code}: {response.text}",
+                    "status_code": response.status_code
+                }
+                
+        except requests.exceptions.ConnectionError:
+            return {
+                "sucesso": False,
+                "mensagem": "Erro de conexão: não foi possível conectar ao servidor"
+            }
+        except requests.exceptions.Timeout:
+            return {
+                "sucesso": False,
+                "mensagem": "Timeout: servidor não respondeu a tempo"
+            }
+        except Exception as e:
+            return {
+                "sucesso": False,
+                "mensagem": f"Erro inesperado: {str(e)}"
+            }
+    
     def enviar_mensagem_teste(self) -> Dict:
         """Envia mensagem de teste."""
         texto = f"""
@@ -156,7 +304,7 @@ Se você recebeu esta mensagem, a integração está funcionando! ✅
         
         return self.enviar_mensagem(texto)
     
-    def enviar_mensagem_sync(self, resultado: Dict) -> Dict:
+    def enviar_mensagem_sync(self, resultado: Dict, origem: str = "automatica") -> Dict:
         """
         Envia notificação após sincronização.
         
@@ -165,13 +313,20 @@ Se você recebeu esta mensagem, a integração está funcionando! ✅
                 - status: "success" | "skipped" | "error"
                 - registros: int (número de registros processados)
                 - message: str (mensagem descritiva)
+            origem: "manual" ou "automatica" para identificar o tipo de sync
         """
         hoje = datetime.now().strftime('%d/%m/%Y às %H:%M:%S')
+        
+        # Define emoji e texto baseado na origem
+        if origem == "manual":
+            tipo_sync = "👉 *Sincronização Manual*"
+        else:
+            tipo_sync = "⏰ *Sincronização Automática*"
         
         if resultado.get("status") == "success":
             registros = resultado.get("registros", 0)
             texto = f"""
-🔄 *Sincronização Concluída*
+🔄 {tipo_sync}
 
 *Data/Hora:* {hoje}
 
@@ -183,7 +338,7 @@ _Sistema de Controle de Férias_
         elif resultado.get("status") == "skipped":
             motivo = resultado.get("message", "Arquivo não foi alterado")
             texto = f"""
-⏭️ *Sincronização Pulada*
+⏭️ {tipo_sync}
 
 *Data/Hora:* {hoje}
 
@@ -194,11 +349,11 @@ _Sistema de Controle de Férias_
         else:
             erro = resultado.get("message", "Erro desconhecido")
             texto = f"""
-❌ *Erro na Sincronização*
+❌ {tipo_sync}
 
 *Data/Hora:* {hoje}
 
-Erro: {erro}
+*Erro:* {erro}
 
 _Sistema de Controle de Férias_
             """.strip()

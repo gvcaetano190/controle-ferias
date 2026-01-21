@@ -86,11 +86,16 @@ def corrigir_inversao_dia_mes(dt, data_saida=None):
     return dt
 
 
-def formatar_data(valor, data_saida_ref=None):
+def formatar_data_com_correcao(valor, data_saida_ref=None):
     """
-    Formata data para DD/MM/YYYY (formato brasileiro).
-    Lida com diferentes formatos de entrada.
-    Corrige inversão dia/mês quando detectada.
+    Formata data para DD/MM/YYYY (formato brasileiro) com correção de inversão.
+    
+    NOTA: Esta função é específica para validação de dados de planilhas.
+    Usa heurísticas para corrigir inversão dia/mês quando o Google Sheets
+    interpreta datas no formato americano incorretamente.
+    
+    Para formatação simples sem correção de inversão, use:
+        from utils.formatadores import formatar_data
     
     Args:
         valor: Valor da data (string, datetime, etc)
@@ -163,11 +168,11 @@ def extrair_funcionario_completo(row, colunas):
     
     # Primeiro extrai a data de saída (como referência para corrigir retorno)
     data_saida_raw = row.iloc[3] if len(row) > 3 else None
-    data_saida_str = formatar_data(data_saida_raw)
+    data_saida_str = formatar_data_com_correcao(data_saida_raw)
     
     # Agora extrai retorno usando saída como referência para correção
     data_retorno_raw = row.iloc[4] if len(row) > 4 else None
-    data_retorno_str = formatar_data(data_retorno_raw, data_saida_ref=data_saida_str)
+    data_retorno_str = formatar_data_com_correcao(data_retorno_raw, data_saida_ref=data_saida_str)
     
     # Dados básicos
     dados = {

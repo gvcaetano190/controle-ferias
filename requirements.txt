@@ -18,6 +18,9 @@ requests>=2.31.0
 # Utilitários
 python-dateutil>=2.8.0
 
+# Geração de PDF
+weasyprint>=60.0
+
 # ===========================================
 # FUTURO - FastAPI (descomente quando precisar)
 # ===========================================

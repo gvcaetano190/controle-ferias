@@ -13,17 +13,17 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      # Persistência de dados
-      - ./data:/app/data
-      - ./download:/app/download
-      - ./logs:/app/logs
+      # Persistência de dados - Named volumes
+      - data-volume:/app/data
+      - download-volume:/app/download
+      - logs-volume:/app/logs
       # Configurações
       - ./.env:/app/.env
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=America/Sao_Paulo
     command: ["./scripts/iniciar.sh"]
-    restart: unless-stopped
+    restart: always
     networks:
       - controle-ferias-network
     healthcheck:
@@ -41,16 +41,16 @@ services:
     container_name: controle-ferias-scheduler
     volumes:
       # Persistência de dados (mesmo volume do frontend)
-      - ./data:/app/data
-      - ./download:/app/download
-      - ./logs:/app/logs
+      - data-volume:/app/data
+      - download-volume:/app/download
+      - logs-volume:/app/logs
       # Configurações
       - ./.env:/app/.env
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=America/Sao_Paulo
     command: ["./scripts/scheduler.sh"]
-    restart: unless-stopped
+    restart: always
     networks:
       - controle-ferias-network
     depends_on:
@@ -67,9 +67,10 @@ networks:
     driver: bridge
 
 volumes:
-  # Volumes nomeados para persistência (opcional)
-  data:
+  data-volume:
     driver: local
-  logs:
+  download-volume:
+    driver: local
+  logs-volume:
     driver: local
 

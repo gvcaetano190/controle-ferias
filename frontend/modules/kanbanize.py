@@ -242,7 +242,7 @@ def render(database):
         st.info(f"✅ Cache: Última sincronização em {ultima_sync[:10]} às {ultima_sync[11:19]}")
 
     # --- BOTÃO "BUSCAR DADOS" para forçar recarregar ---
-    if st.button("🚀 Buscar Dados (Forçar)", type="primary", use_container_width=True, help="Força busca na API mesmo com cache"):
+    if st.button("🚀 Buscar Dados (Forçar)", type="primary", width="stretch", help="Força busca na API mesmo com cache"):
         st.divider()
         
         status_box = st.status("🚀 Iniciando motor de busca...", expanded=True)

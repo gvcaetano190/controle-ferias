@@ -11,12 +11,18 @@ WORKDIR /app
 ENV TZ=America/Sao_Paulo
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Instala dependências do sistema
+# Instala dependências do sistema (incluindo WeasyPrint)
 RUN apt-get update && apt-get install -y \
     bash \
     curl \
     procps \
     tzdata \
+    # Dependências do WeasyPrint para geração de PDF
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf2.0-0 \
+    libffi-dev \
+    shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
 # Copia arquivos de dependências primeiro (cache de layers)

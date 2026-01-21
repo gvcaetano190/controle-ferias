@@ -17,6 +17,46 @@ from config.settings import settings
 from core.sync_manager import SyncManager
 
 
+def _enviar_notificacao_sync(resultado: dict, database) -> None:
+    """
+    Envia notificação WhatsApp após sincronização manual.
+    
+    Args:
+        resultado: Dict com resultado da sincronização
+        database: Instância do Database para registrar logs
+    """
+    if not settings.SYNC_NOTIF_ENABLED:
+        return
+    
+    try:
+        from integrations.evolution_api import EvolutionAPI
+        
+        api = EvolutionAPI(
+            url=settings.EVOLUTION_API_URL,
+            numero=settings.EVOLUTION_NUMERO_SYNC or settings.EVOLUTION_NUMERO,
+            api_key=settings.EVOLUTION_API_KEY
+        )
+        
+        # Passa origem="manual" para diferenciar da automática
+        resultado_notif = api.enviar_mensagem_sync(resultado, origem="manual")
+        
+        if resultado_notif.get("sucesso"):
+            st.success("📱 Notificação WhatsApp enviada com sucesso!")
+        else:
+            st.warning(f"⚠️ Não foi possível enviar a notificação: {resultado_notif.get('mensagem', 'Erro desconhecido')}")
+            
+    except Exception as e:
+        st.error(f"❌ Não foi possível enviar a notificação: {e}")
+        # Registra log do erro de notificação
+        database.registrar_log(
+            tipo="notificacao",
+            categoria="WhatsApp",
+            status="erro",
+            mensagem=f"Erro ao enviar notificação de sync: {str(e)}",
+            origem="frontend_sync"
+        )
+
+
 def render(database):
     """Renderiza a página de sincronização."""
     st.header("🔄 Sincronização de Dados")
@@ -194,11 +234,15 @@ def render(database):
                 resultado = sync.sincronizar(forcar=forcar)
                 
                 if resultado["status"] == "success":
-                    st.success(f"✅ {resultado['message']}")
-                    # Limpa caches e recarrega
+                    st.success(f"✅ Sincronização concluída com sucesso! {resultado.get('registros', 0)} registros processados.")
+                    # Envia notificação WhatsApp se configurado
+                    _enviar_notificacao_sync(resultado, database)
+                    # Limpa caches
                     st.cache_data.clear()
                     st.cache_resource.clear()
-                    st.rerun()
+                    # Botão para recarregar a página
+                    if st.button("🔄 Atualizar página", key="reload_success"):
+                        st.rerun()
                 elif resultado["status"] == "skipped":
                     st.info(f"⏭️ {resultado['message']}")
                     # Registra log de skip (sem alterações)
@@ -210,9 +254,10 @@ def render(database):
                         detalhes=resultado.get('message', ''),
                         origem="frontend_sync"
                     )
-                    st.rerun()
                 else:
-                    st.error(f"❌ {resultado['message']}")
+                    st.error(f"❌ Erro na sincronização: {resultado['message']}")
+                    # Envia notificação WhatsApp de erro se configurado
+                    _enviar_notificacao_sync(resultado, database)
                     # Registra log de erro
                     database.registrar_log(
                         tipo="sync",
@@ -224,7 +269,9 @@ def render(database):
                     )
                     
             except Exception as e:
-                st.error(f"❌ Erro: {e}")
+                st.error(f"❌ Erro na sincronização: {e}")
+                # Envia notificação WhatsApp de erro
+                _enviar_notificacao_sync({"status": "error", "message": str(e)}, database)
                 # Registra log de exceção
                 database.registrar_log(
                     tipo="sync",
