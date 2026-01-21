@@ -70,23 +70,23 @@ case "${1:-help}" in
         ;;
     
     update)
-        echo "🔄 Atualizando código e containers..."
+        echo "🔄 Atualizando código (rápido)..."
         echo "   - Parando containers..."
         $DOCKER_COMPOSE down
-        echo "   - Reconstruindo imagens com novo código..."
-        $DOCKER_COMPOSE build --no-cache
+        echo "   - Copiando novo código..."
+        $DOCKER_COMPOSE build
         echo "   - Iniciando containers..."
         $DOCKER_COMPOSE up -d
-        echo "✅ Containers atualizados com novo código!"
+        echo "✅ Código atualizado!"
         echo "   Dashboard: http://localhost:8501"
         ;;
     
     rebuild)
-        echo "🔨 Reconstruindo imagens do zero..."
+        echo "🔨 Reconstruindo imagens do zero (lento - baixa tudo novamente)..."
         $DOCKER_COMPOSE down
         $DOCKER_COMPOSE build --no-cache --pull
         $DOCKER_COMPOSE up -d
-        echo "✅ Reconstruído e iniciado!"
+        echo "✅ Reconstruído completamente!"
         ;;
     
     logs)
