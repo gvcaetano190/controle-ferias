@@ -213,9 +213,8 @@ class SyncManager:
         """
         Valida e corrige data de retorno baseado no mês da aba.
         
-        Regra: Se a aba é de um mês X, o retorno pode ser no máximo no mês X+1
-        (30 dias de férias). Se está em um mês posterior, provavelmente
-        o dia/mês estão invertidos.
+        Regra simplificada: Apenas valida se retorno >= saída.
+        Remove validação de mês máximo que causava falsos negativos.
         
         Args:
             dt_retorno: Data de retorno a validar
@@ -226,59 +225,21 @@ class SyncManager:
         Returns:
             Data de retorno corrigida ou original
         """
-        if not isinstance(dt_retorno, datetime) or not mes_aba:
+        if not isinstance(dt_retorno, datetime):
             return dt_retorno
         
-        dia, mes = dt_retorno.day, dt_retorno.month
-        
-        # Se dia > 12, não tem como inverter
-        if dia > 12:
-            return dt_retorno
-        
-        # Se dia == mes, não faz diferença inverter
-        if dia == mes:
-            return dt_retorno
-        
-        # Calcula o mês máximo permitido para retorno (mês da aba + 1)
-        mes_max_retorno = mes_aba + 1 if mes_aba < 12 else 1
-        ano_max_retorno = ano_aba if mes_aba < 12 else ano_aba + 1
-        
-        # Se o mês do retorno é maior que o permitido, tenta inverter
-        # Ex: aba JANEIRO (1), retorno máximo FEVEREIRO (2)
-        # Se retorno mostra MARÇO (3), está errado
-        
-        retorno_mes_ok = False
-        if dt_retorno.year == ano_aba and mes <= mes_max_retorno:
-            retorno_mes_ok = True
-        elif dt_retorno.year == ano_max_retorno and mes <= mes_max_retorno:
-            retorno_mes_ok = True
-        elif mes == mes_aba:  # Mesmo mês da aba é sempre OK
-            retorno_mes_ok = True
-        
-        if retorno_mes_ok:
-            return dt_retorno
-        
-        # Mês do retorno parece errado, tenta inverter
-        try:
-            dt_invertido = datetime(dt_retorno.year, dia, mes)
-        except ValueError:
-            return dt_retorno
-        
-        # Verifica se invertido faz sentido (após saída e no mês correto)
-        if dt_saida and dt_invertido < dt_saida:
-            return dt_retorno  # Invertido é antes da saída, mantém original
-        
-        # Verifica se o mês invertido está no range permitido
-        invertido_mes_ok = False
-        if dt_invertido.year == ano_aba and dt_invertido.month <= mes_max_retorno:
-            invertido_mes_ok = True
-        elif dt_invertido.year == ano_max_retorno and dt_invertido.month <= mes_max_retorno:
-            invertido_mes_ok = True
-        elif dt_invertido.month == mes_aba:
-            invertido_mes_ok = True
-        
-        if invertido_mes_ok:
-            return dt_invertido
+        # Valida apenas se retorno é depois de saída
+        if dt_saida and isinstance(dt_saida, datetime):
+            if dt_retorno < dt_saida:
+                # Tenta inverter dia/mês
+                dia, mes = dt_retorno.day, dt_retorno.month
+                if dia <= 12 and dia != mes:
+                    try:
+                        dt_invertido = datetime(dt_retorno.year, dia, mes)
+                        if dt_invertido >= dt_saida:
+                            return dt_invertido
+                    except ValueError:
+                        pass
         
         return dt_retorno
     
@@ -336,15 +297,29 @@ class SyncManager:
         
         for mes_nome, mes_num in meses.items():
             if mes_nome in nome_upper:
-                # Procura ano
-                ano_match = re.search(r'(20\d{2})', nome_aba)
+                # Procura ano - formato "MÊS ANNO" (4 dígitos com espaço)
+                ano_match = re.search(r'\s(20\d{2})', nome_aba)
                 if ano_match:
                     return (mes_num, int(ano_match.group(1)))
                 
-                # Formato .XX
+                # Procura ano - formato "MÊS ANNO" (2 dígitos com espaço)
+                ano_match = re.search(r'\s(\d{2})$', nome_aba)
+                if ano_match:
+                    ano_num = int(ano_match.group(1))
+                    # Se for de 00-30, assume 2000+, se for 30-99 assume 1900+
+                    if ano_num <= 30:
+                        return (mes_num, 2000 + ano_num)
+                    else:
+                        return (mes_num, 1900 + ano_num)
+                
+                # Formato .XX (com ponto)
                 ano_match = re.search(r'\.(\d{2})$', nome_aba)
                 if ano_match:
-                    return (mes_num, 2000 + int(ano_match.group(1)))
+                    ano_num = int(ano_match.group(1))
+                    if ano_num <= 30:
+                        return (mes_num, 2000 + ano_num)
+                    else:
+                        return (mes_num, 1900 + ano_num)
                 
                 return (mes_num, datetime.now().year)
         
@@ -448,16 +423,38 @@ class SyncManager:
         if idx_saida is None:
             idx_saida = 3
         if idx_retorno is None:
-            # Procura a primeira coluna após saída que tenha dados de data
-            idx_retorno = 4
-            for idx_col in range(idx_saida + 1, len(colunas) + 2):
-                if idx_col in colunas_por_nome.values():
-                    # Verifica se o nome parece ser retorno
-                    for nome, idx in colunas_por_nome.items():
-                        if idx == idx_col and any(x in nome for x in ["RETORNO", "LIBERAÇÃO", "LIBERACAO", "FIM"]):
-                            idx_retorno = idx_col
-                            break
-                    break
+            # Tenta encontrar coluna de retorno de forma inteligente
+            # Procura primeira coluna após saída com dados que pareçam datas
+            idx_retorno_detectado = None
+            primeira_linha = list(ws.iter_rows(max_row=1))[0]
+            max_col_verificar = min(idx_saida + 5, len(primeira_linha))
+            
+            for idx_col in range(idx_saida + 1, max_col_verificar):
+                # Pega valores das primeiras linhas desta coluna
+                valores_coluna = []
+                for row in list(ws.iter_rows(min_row=2, max_row=10)):
+                    if idx_col < len(row):
+                        val = row[idx_col].value
+                        if val and str(val).strip() not in ["", "nan", "None"]:
+                            valores_coluna.append(val)
+                
+                # Se encontrou valores que parecem datas, usa esta coluna
+                if valores_coluna:
+                    # Checa se tem datetime objects ou strings com padrão de data
+                    tem_datas = any(
+                        isinstance(v, datetime) or 
+                        (isinstance(v, str) and ('/' in v or '-' in v))
+                        for v in valores_coluna
+                    )
+                    if tem_datas:
+                        idx_retorno_detectado = idx_col
+                        break
+            
+            # Se detectou coluna com datas, usa ela; senão usa fallback
+            if idx_retorno_detectado is not None:
+                idx_retorno = idx_retorno_detectado
+            else:
+                idx_retorno = 5 if len(primeira_linha) > 5 else 4
         
         # Índices de sistemas
         idx_sistemas = {}
