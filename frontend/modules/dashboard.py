@@ -87,8 +87,9 @@ def render(database):
         mes_atual = datetime.now().month
         ano_atual = datetime.now().year
         
+        # Busca a aba do mês/ano atual (mais recente primeiro, ordem reversa)
         aba_default = None
-        for aba in abas:
+        for aba in reversed(abas):  # Procura de trás pra frente (mais recentes)
             if aba.get("mes") == mes_atual and aba.get("ano") == ano_atual:
                 aba_default = aba["nome"]
                 break

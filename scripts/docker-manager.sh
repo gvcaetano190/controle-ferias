@@ -30,9 +30,9 @@ show_help() {
     echo ""
     echo "  start         Inicia os containers"
     echo "  stop          Para os containers"
-    echo "  restart       Reinicia os containers"
-    echo "  update        Atualiza código e reinicia (rápido)"
-    echo "  rebuild       Reconstrui imagens e reinicia (após mudanças no código)"
+    echo "  restart       Reinicia os containers (sem atualizar código)"
+    echo "  update        Atualiza código fonte e reconstrói containers"
+    echo "  rebuild       Rebuild completo (código + dependências + base images)"
     echo "  logs          Mostra logs em tempo real"
     echo "  status        Mostra status dos containers"
     echo "  shell         Acessa shell do container frontend"
@@ -43,9 +43,9 @@ show_help() {
     echo "  help          Mostra esta ajuda"
     echo ""
     echo "Exemplos:"
-    echo "  ./scripts/docker-manager.sh start"
-    echo "  ./scripts/docker-manager.sh rebuild"
-    echo "  ./scripts/docker-manager.sh logs"
+    echo "  ./scripts/docker-manager.sh update    # Atualiza código após git pull"
+    echo "  ./scripts/docker-manager.sh rebuild   # Rebuild completo (mudanças no requirements.txt)"
+    echo "  ./scripts/docker-manager.sh logs      # Ver logs em tempo real"
 }
 
 # Comandos
@@ -70,16 +70,21 @@ case "${1:-help}" in
         ;;
     
     update)
-        echo "🔄 Atualizando containers..."
+        echo "🔄 Atualizando código e containers..."
+        echo "   - Parando containers..."
         $DOCKER_COMPOSE down
-        $DOCKER_COMPOSE up -d --build
-        echo "✅ Containers atualizados!"
+        echo "   - Reconstruindo imagens com novo código..."
+        $DOCKER_COMPOSE build --no-cache
+        echo "   - Iniciando containers..."
+        $DOCKER_COMPOSE up -d
+        echo "✅ Containers atualizados com novo código!"
+        echo "   Dashboard: http://localhost:8501"
         ;;
     
     rebuild)
-        echo "🔨 Reconstruindo imagens..."
+        echo "🔨 Reconstruindo imagens do zero..."
         $DOCKER_COMPOSE down
-        $DOCKER_COMPOSE build --no-cache
+        $DOCKER_COMPOSE build --no-cache --pull
         $DOCKER_COMPOSE up -d
         echo "✅ Reconstruído e iniciado!"
         ;;
