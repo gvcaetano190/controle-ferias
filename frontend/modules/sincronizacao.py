@@ -143,6 +143,8 @@ def render(database):
                 manha_minute = settings.MENSAGEM_MANHA_MINUTE
                 tarde_hour = settings.MENSAGEM_TARDE_HOUR
                 tarde_minute = settings.MENSAGEM_TARDE_MINUTE
+                sync_notif_hour = settings.SYNC_NOTIF_HOUR
+                sync_notif_minute = settings.SYNC_NOTIF_MINUTE
                 
                 # Calcula próximo horário
                 agora = datetime.now()
@@ -153,6 +155,24 @@ def render(database):
                     if sync_time < agora:
                         sync_time += timedelta(days=1)
                     proximos_horarios.append(("Sincronização", sync_time))
+                
+                if settings.SYNC_NOTIF_ENABLED:
+                    sync_notif_time = agora.replace(hour=sync_notif_hour, minute=sync_notif_minute, second=0, microsecond=0)
+                    if sync_notif_time < agora:
+                        sync_notif_time += timedelta(days=1)
+                    proximos_horarios.append(("Sincronização + Notificação", sync_notif_time))
+                
+                if settings.KANBANIZE_SYNC_ENABLED and settings.KANBANIZE_SYNC_09H30_ENABLED:
+                    kanban_09h30_time = agora.replace(hour=9, minute=30, second=0, microsecond=0)
+                    if kanban_09h30_time < agora:
+                        kanban_09h30_time += timedelta(days=1)
+                    proximos_horarios.append(("Kanbanize Sync 09:30", kanban_09h30_time))
+                
+                if settings.KANBANIZE_SYNC_ENABLED and settings.KANBANIZE_SYNC_18H00_ENABLED:
+                    kanban_18h00_time = agora.replace(hour=18, minute=0, second=0, microsecond=0)
+                    if kanban_18h00_time < agora:
+                        kanban_18h00_time += timedelta(days=1)
+                    proximos_horarios.append(("Kanbanize Sync 18:00", kanban_18h00_time))
                 
                 if settings.MENSAGEM_MANHA_ENABLED:
                     manha_time = agora.replace(hour=manha_hour, minute=manha_minute, second=0, microsecond=0)
@@ -182,6 +202,12 @@ def render(database):
                             mensagem += f"**⏰ Horários Configurados:**\n"
                             if settings.SYNC_ENABLED:
                                 mensagem += f"- 🔄 Sincronização: {sync_hour:02d}:{sync_minute:02d}\n"
+                            if settings.SYNC_NOTIF_ENABLED:
+                                mensagem += f"- 🔔 Sincronização + Notificação: {sync_notif_hour:02d}:{sync_notif_minute:02d}\n"
+                            if settings.KANBANIZE_SYNC_ENABLED and settings.KANBANIZE_SYNC_09H30_ENABLED:
+                                mensagem += f"- 📋 Kanbanize Sync: 09:30\n"
+                            if settings.KANBANIZE_SYNC_ENABLED and settings.KANBANIZE_SYNC_18H00_ENABLED:
+                                mensagem += f"- 📋 Kanbanize Sync: 18:00\n"
                             if settings.MENSAGEM_MANHA_ENABLED:
                                 mensagem += f"- 🌅 Mensagem Matutina: {manha_hour:02d}:{manha_minute:02d}\n"
                             if settings.MENSAGEM_TARDE_ENABLED:
@@ -212,6 +238,12 @@ def render(database):
                                 mensagem += f"**⏰ Horários Configurados:**\n"
                                 if settings.SYNC_ENABLED:
                                     mensagem += f"- 🔄 Sincronização: {sync_hour:02d}:{sync_minute:02d}\n"
+                                if settings.SYNC_NOTIF_ENABLED:
+                                    mensagem += f"- 🔔 Sincronização + Notificação: {sync_notif_hour:02d}:{sync_notif_minute:02d}\n"
+                                if settings.KANBANIZE_SYNC_ENABLED and settings.KANBANIZE_SYNC_09H30_ENABLED:
+                                    mensagem += f"- 📋 Kanbanize Sync: 09:30\n"
+                                if settings.KANBANIZE_SYNC_ENABLED and settings.KANBANIZE_SYNC_18H00_ENABLED:
+                                    mensagem += f"- 📋 Kanbanize Sync: 18:00\n"
                                 if settings.MENSAGEM_MANHA_ENABLED:
                                     mensagem += f"- 🌅 Mensagem Matutina: {manha_hour:02d}:{manha_minute:02d}\n"
                                 if settings.MENSAGEM_TARDE_ENABLED:

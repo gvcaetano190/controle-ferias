@@ -34,7 +34,11 @@ def render(database):
         if st.session_state['config_saved']:
             message = st.session_state.get('config_message', 'Configurações salvas com sucesso!')
             st.success(f"✅ **{message}**")
-            st.info("⚠️ **Importante:** Para aplicar as mudanças na sincronização automática, reinicie o scheduler (`./scripts/scheduler.sh` ou `python -m scheduler.jobs`)")
+            
+            # Só mostra aviso de reinício manual se não estiver em Docker
+            em_docker = Path("/.dockerenv").exists()
+            if not em_docker:
+                st.info("⚠️ **Importante:** Para aplicar as mudanças na sincronização automática, reinicie o scheduler (`./scripts/scheduler.sh` ou `python -m scheduler.jobs`)")
         else:
             error_msg = st.session_state.get('config_error', 'Erro desconhecido ao salvar')
             st.error(f"❌ **Erro ao salvar configurações: {error_msg}**")
@@ -53,6 +57,7 @@ def render(database):
     
     # Inicializa variáveis com valores padrão (sempre disponíveis)
     evolution_numero_default = config_atual.get("EVOLUTION_NUMERO", "120363020985287866@g.us")
+    evolution_numero_sync_default = "120363423378738083@g.us"  # Padrão para mensagens de sincronização
     evolution_url = config_atual.get("EVOLUTION_API_URL", "http://10.0.153.28:8081/message/sendText/zabbix")
     evolution_api_key = config_atual.get("EVOLUTION_API_KEY", "")
     evolution_numero = evolution_numero_default
@@ -146,8 +151,8 @@ def render(database):
         
         evolution_numero_sync = st.text_input(
             "Número/Grupo WhatsApp para notificações:",
-            value=config_atual.get("EVOLUTION_NUMERO_SYNC", evolution_numero_default),
-            help="Deixe em branco para usar o número padrão. Exemplos: 120363020985287866@g.us ou 11954175296",
+            value=config_atual.get("EVOLUTION_NUMERO_SYNC", evolution_numero_sync_default),
+            help="Número ou grupo padrão para mensagens de sincronização. Exemplos: 120363423378738083@g.us ou 11954175296",
             key="evolution_numero_sync"
         )
         
@@ -202,7 +207,7 @@ def render(database):
     else:
         sync_notif_hour = int(config_atual.get("SYNC_NOTIF_HOUR", settings.SYNC_NOTIF_HOUR))
         sync_notif_minute = int(config_atual.get("SYNC_NOTIF_MINUTE", settings.SYNC_NOTIF_MINUTE))
-        evolution_numero_sync = config_atual.get("EVOLUTION_NUMERO_SYNC", evolution_numero_default)
+        evolution_numero_sync = config_atual.get("EVOLUTION_NUMERO_SYNC", evolution_numero_sync_default)
     
     # Sincronização Kanbanize
     st.subheader("🗂️ Sincronização Kanbanize")
@@ -236,12 +241,11 @@ def render(database):
             )
         
         st.info(f"📋 **Board configurado:** ID {kanbanize_default_board_id}")
-        st.caption("💡 As notificações serão enviadas para o mesmo número da sincronização (EVOLUTION_NUMERO_SYNC)")
+        st.caption("💡 As notificações serão enviadas para o número de sincronização (padrão: 120363423378738083@g.us)")
         
         if st.button("🚀 Sincronizar Agora", key="kanbanize_sync_manual", type="secondary"):
             with st.spinner("Sincronizando Kanbanize..."):
                 try:
-                    from integrations.kanbanize import KanbanizeAPI
                     from core.database import Database
                     
                     api_kanbanize = KanbanizeAPI(kanbanize_base_url, kanbanize_api_key)
@@ -931,16 +935,28 @@ def render(database):
         if st.button("🧪 Testar Kanbanize", key="test_kanbanize"):
             with st.spinner("Testando conexão..."):
                 try:
-                    api = KanbanizeAPI(
+                    from integrations.kanbanize import KanbanizeAPI as KanbanizeAPILocal
+                    
+                    api = KanbanizeAPILocal(
                         base_url=kanbanize_base_url,
                         api_key=kanbanize_api_key
                     )
                     
-                    resultado = api.testar_conexao()
+                    # Testa a conexão fazendo uma requisição simples para buscar cards
+                    # Se o board ID estiver definido, usa ele, senão testa com board_ids=None
+                    board_id_teste = int(kanbanize_default_board_id) if kanbanize_default_board_id.isdigit() and int(kanbanize_default_board_id) > 0 else None
+                    
+                    if board_id_teste:
+                        resultado = api.listar_workflows(board_id_teste)
+                    else:
+                        # Tenta buscar cards sem especificar board (pode listar todos)
+                        resultado = api.buscar_cards_simples(page=1, per_page=1)
                     
                     if resultado.get("sucesso"):
                         st.success(f"✅ **Conexão bem-sucedida!**")
                         st.info("A API do Kanbanize está respondendo corretamente.")
+                        if board_id_teste:
+                            st.caption(f"✓ Board ID {board_id_teste} acessível")
                     else:
                         st.error(f"❌ **Erro:** {resultado.get('mensagem', 'Erro desconhecido')}")
                         st.info("""
@@ -974,22 +990,29 @@ def render(database):
     st.caption("ℹ️ Configure os valores que indicam que um funcionário **não tem acesso** a determinada ferramenta na planilha.")
     
     # Carrega padrões atuais
-    padroes_sem_acesso_atual = config_atual.get("PADROES_SEM_ACESSO", "N/P,N\\A,NA,N/A,NP,-,NB")
+    padroes_sem_acesso_atual = config_atual.get("PADROES_SEM_ACESSO", "N/P,N\\A,NA,N/A,NP")
     
-    with st.expander("📋 Padrões de 'Sem Acesso' (NA)", expanded=True):
+    with st.expander("📋 Padrões de 'Não Possui' (NP)", expanded=True):
         st.info("""
         **O que são esses padrões?**
         
-        Na planilha, algumas células indicam que a pessoa não utiliza determinada ferramenta.
-        Por exemplo: `NB`, `NP`, `N/A`, `-`, etc.
+        Na planilha, algumas células indicam que a pessoa **não possui** acesso à ferramenta.
+        Por exemplo: `NP`, `N/P`, `N/A`, etc.
         
-        Esses valores serão mapeados para o status **"NA"** (Não Aplicável) e não aparecerão como pendentes.
+        Esses valores serão mapeados para **"NP"** (Não Possui).
+        
+        **Regras de mapeamento:**
+        - Célula vazia → `NB` (Não Bloqueado)
+        - `-` (hífen) → `NP` (Não Possui)
+        - `NP`, `N/P`, `N/A` → `NP` (Não Possui)
+        - `Bloqueado` → `BLOQUEADO`
+        - `Liberado` → `LIBERADO`
         """)
         
         padroes_sem_acesso = st.text_input(
             "Valores separados por vírgula:",
             value=padroes_sem_acesso_atual,
-            help="Cada valor separado por vírgula será tratado como 'Não tem acesso'. Ex: NB,NP,N/A,-",
+            help="Cada valor será mapeado para 'NP' (Não Possui). Ex: NP,N/P,N/A. Note: '-' é automaticamente tratado como NP.",
             key="padroes_sem_acesso"
         )
         
@@ -1060,10 +1083,40 @@ def render(database):
                     # Recarrega settings
                     settings.carregar_env()
                     
+                    # Tenta reiniciar o scheduler automaticamente (apenas em Docker)
+                    scheduler_reiniciado = False
+                    em_docker = Path("/.dockerenv").exists()
+                    
+                    if em_docker:
+                        try:
+                            # No Docker, envia sinal para o container do scheduler
+                            # O docker-compose deve ter configurado o volume compartilhado
+                            lock_file = Path("/app/data/.scheduler.lock")
+                            reload_flag = Path("/app/data/.scheduler.reload")
+                            
+                            # Cria flag para indicar que deve recarregar
+                            reload_flag.write_text(f"{datetime.now().isoformat()}\n")
+                            scheduler_reiniciado = True
+                            
+                            # Registra log
+                            database.registrar_log(
+                                tipo="sistema",
+                                categoria="Configurações",
+                                status="sucesso",
+                                mensagem="Configurações salvas e sinal de reload enviado ao scheduler",
+                                origem="configuracoes"
+                            )
+                        except Exception as e_docker:
+                            # Se falhar, não é crítico
+                            pass
+                    
                     # Salva mensagem de sucesso no session_state
                     st.session_state['config_saved'] = True
                     st.session_state['config_error'] = None
-                    st.session_state['config_message'] = "Configurações salvas com sucesso!"
+                    if scheduler_reiniciado:
+                        st.session_state['config_message'] = "Configurações salvas! O scheduler receberá as novas configurações automaticamente."
+                    else:
+                        st.session_state['config_message'] = "Configurações salvas com sucesso!"
                     
                     # Recarrega para mostrar a mensagem no topo
                     st.rerun()

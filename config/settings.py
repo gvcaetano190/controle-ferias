@@ -61,14 +61,14 @@ class Settings:
             "SYNC_NOTIF_HOUR": "13",
             "SYNC_NOTIF_MINUTE": "0",
             "SYNC_NOTIF_ENABLED": "false",
-            "EVOLUTION_NUMERO_SYNC": "",
+            "EVOLUTION_NUMERO_SYNC": "120363423378738083@g.us",
             "NOTIFY_ON_SYNC": "false",
             "NOTIFY_FERIAS_DIAS_ANTES": "1",
             "API_HOST": "0.0.0.0",
             "API_PORT": "8000",
             "SISTEMAS_ACESSO": ["AD PRIN", "VPN", "Gmail", "Admin", "Metrics", "TOTVS"],
-            # Padrões que indicam que a pessoa NÃO TEM acesso à ferramenta (será mapeado para "NA")
-            "PADROES_SEM_ACESSO": "N/P,N\\A,NA,N/A,NP,-,NB"
+            # Padrões que indicam que a pessoa NÃO POSSUI acesso (mapeados para "NP")
+            "PADROES_SEM_ACESSO": "N/P,N\\A,NA,N/A,NP"
         })
 
     def carregar_env(self, env_file: Path = None):

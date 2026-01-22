@@ -23,11 +23,14 @@ def status_emoji(status: str) -> str:
         return "🔴"
     elif status == "LIBERADO":
         return "🟢"
-    elif status == "PENDENTE":
-        return "NB"  # Não Bloqueado
-    elif status in ["NA", "N/A", "NP", "N/P"]:
+    # Tratamento explícito para pendência/sem bloqueio
+    elif status in ["PENDENTE", "NB", ""]:
+        return "NB"  # Não Bloqueado / Pendente
+    # Não possui acesso
+    elif status in ["NA", "N/A", "NP", "N/P", "-"]:
         return "NP"  # Não Possui
-    return "NP"
+    # Padrão: trate como NB (mais seguro que marcar como NP)
+    return "NB"
 
 
 def exibir_tabela_funcionarios(funcionarios: List[Dict], mostrar_acessos: bool = True):

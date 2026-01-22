@@ -157,13 +157,13 @@ def job_sincronizacao():
             print(f"   ❌ Erro: {resultado['message']}")
         
         # Envia notificação se Evolution API estiver habilitada
-        if settings.EVOLUTION_ENABLED:
+        if settings.EVOLUTION_ENABLED and settings.EVOLUTION_NUMERO_SYNC:
             try:
                 from integrations.evolution_api import EvolutionAPI
                 
                 api = EvolutionAPI(
                     url=settings.EVOLUTION_API_URL,
-                    numero=settings.EVOLUTION_NUMERO_SYNC or settings.EVOLUTION_NUMERO,
+                    numero=settings.EVOLUTION_NUMERO_SYNC,
                     api_key=settings.EVOLUTION_API_KEY
                 )
                 
@@ -183,11 +183,63 @@ def job_sincronizacao():
 
 def job_sincronizacao_com_notificacao():
     """
-    Job de sincronização com notificação para número alternativo (13:00).
-    Envia resultado da sincronização via WhatsApp (mesmo que 08:15).
+    Job de sincronização com notificação (13:00).
+    Verifica se já foi executada hoje para evitar duplicação.
+    Se a sincronização das 08:15 já rodou, apenas envia notificação.
+    Caso contrário, executa sincronização completa.
     """
-    # Executa a mesma sincronização das 08:15 (que já envia notificação)
-    job_sincronizacao()
+    if not _eh_dia_util():
+        print(f"\n🔔 [{agora_formatado(FORMATO_HORA)}] Sincronização + Notificação pulada (fim de semana)")
+        return
+    
+    # Verifica se já foi executado hoje
+    if _verificar_job_executado("sync_notif"):
+        print(f"\n🔔 [{agora_formatado(FORMATO_HORA)}] Sincronização + Notificação já executada hoje, pulando...")
+        return
+    
+    print(f"\n🔔 [{agora_formatado(FORMATO_HORA)}] Sincronização + Notificação (13:00)...")
+    
+    # Se a sincronização das 08:15 já rodou hoje, não precisa sincronizar de novo
+    # Apenas verifica e envia notificação do status atual
+    if _verificar_job_executado("sync"):
+        print("   ℹ️ Sincronização das 08:15 já executada, enviando apenas notificação...")
+        try:
+            from integrations.evolution_api import EvolutionAPI
+            from core.database import Database
+            
+            # Busca última sincronização
+            db = Database()
+            last_sync = db.buscar_ultimo_sync()
+            
+            if last_sync and settings.EVOLUTION_ENABLED and settings.EVOLUTION_NUMERO_SYNC:
+                api = EvolutionAPI(
+                    url=settings.EVOLUTION_API_URL,
+                    numero=settings.EVOLUTION_NUMERO_SYNC,
+                    api_key=settings.EVOLUTION_API_KEY
+                )
+                
+                # Monta resultado para notificação
+                resultado = {
+                    "status": "success",
+                    "registros": last_sync.get('total_registros', 0),
+                    "message": f"Última sincronização: {last_sync.get('sync_at', 'N/A')}"
+                }
+                
+                resultado_notif = api.enviar_mensagem_sync(resultado, origem="automatica_13h")
+                
+                if resultado_notif["sucesso"]:
+                    print(f"   📱 Notificação enviada para: {api.numero}")
+                else:
+                    print(f"   ⚠️ Falha ao enviar notificação: {resultado_notif['mensagem']}")
+            
+            _marcar_job_executado("sync_notif")
+        except Exception as e:
+            print(f"   ❌ Erro ao enviar notificação: {e}")
+    else:
+        # Se não executou às 08:15, executa sincronização completa agora
+        print("   ℹ️ Sincronização das 08:15 não foi executada, executando agora...")
+        job_sincronizacao()
+        _marcar_job_executado("sync_notif")
 
 
 def job_verificar_ferias_proximas():
@@ -710,9 +762,38 @@ def main():
     
     print("\n💡 Pressione Ctrl+C para parar\n")
     
+    # Verifica periodicamente se há arquivo de reload
+    reload_flag = Path(settings.DATA_DIR) / ".scheduler.reload"
+    
     try:
         while True:
             time.sleep(60)
+            
+            # Verifica se foi criado arquivo de reload
+            if reload_flag.exists():
+                print("\n🔄 Detectado arquivo de reload, reiniciando scheduler...")
+                
+                try:
+                    # Remove o arquivo de flag
+                    reload_flag.unlink()
+                    
+                    # Para o scheduler atual
+                    parar_scheduler()
+                    
+                    # Recarrega configurações
+                    settings.carregar_env()
+                    
+                    # Reinicia o scheduler
+                    time.sleep(1)
+                    if iniciar_scheduler(executar_perdidos=False):
+                        print("✅ Scheduler reiniciado com novas configurações!")
+                    else:
+                        print("❌ Falha ao reiniciar scheduler")
+                        break
+                except Exception as e:
+                    print(f"❌ Erro ao reiniciar scheduler: {e}")
+                    break
+                    
     except KeyboardInterrupt:
         parar_scheduler()
         print("\n👋 Scheduler encerrado")

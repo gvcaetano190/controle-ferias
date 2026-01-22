@@ -264,25 +264,29 @@ class SyncManager:
     
     def _mapear_status(self, valor: Any) -> str:
         """Mapeia valor para status padronizado."""
+        # Vazio ou None = NB (Não Bloqueado)
         if pd.isna(valor) or str(valor).strip() in ["", "nan"]:
-            return "NB"  # Não preenchido
+            return "NB"
         
         valor_str = str(valor).upper().strip()
         
+        # Status específicos
         if valor_str in ["BLOQUEADO", "BLOQ"]:
             return "BLOQUEADO"
         if valor_str in ["LIBERADO", "LIB"]:
             return "LIBERADO"
         
-        # Carrega padrões de "sem acesso" da configuração
-        padroes_sem_acesso_str = settings.PADROES_SEM_ACESSO if hasattr(settings, 'PADROES_SEM_ACESSO') else "N/P,N\\A,NA,N/A,NP,-,NB"
-        padroes_sem_acesso = [p.strip().upper() for p in padroes_sem_acesso_str.split(",")]
+        # Hífen (-) vira NP (Não Possui)
+        if valor_str == "-":
+            return "NP"
         
-        # Se for um padrão de "sem acesso", mantém o valor original (pode ser -, NA, NP, etc)
-        if valor_str in padroes_sem_acesso:
-            return valor_str  # Retorna o valor original mapeado para uppercase
+        # Padrões de "Não Possui" (mantém como NP)
+        padroes_nao_possui = ["NP", "N/P", "N\\A", "NA", "N/A"]
+        if valor_str in padroes_nao_possui:
+            return "NP"
         
-        return "NB"  # Padrão: não preenchido
+        # Qualquer outro valor = NB (Não Bloqueado - valor desconhecido tratado como liberado)
+        return "NB"
     
     def _extrair_mes_ano(self, nome_aba: str) -> Tuple[Optional[int], Optional[int]]:
         """Extrai mês e ano do nome da aba."""
