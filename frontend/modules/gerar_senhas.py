@@ -369,20 +369,88 @@ def render(database):
                 texto_escaped = texto.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
                 
                 html_code = f"""
-                <button onclick="navigator.clipboard.writeText('{texto_escaped}').then(() => {{
-                    this.innerHTML = '✅';
-                    setTimeout(() => {{ this.innerHTML = '{label}'; }}, 1500);
-                }}).catch(err => {{
-                    this.innerHTML = '❌';
-                    setTimeout(() => {{ this.innerHTML = '{label}'; }}, 1500);
-                }});" 
-                style="background-color: #262730; color: white; border: 1px solid #4a4a5a; 
-                       padding: 5px 15px; border-radius: 5px; cursor: pointer; font-size: 14px;
-                       transition: all 0.2s ease;">
+                <style>
+                    .copy-btn-{key} {{
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white;
+                        border: none;
+                        padding: 8px 20px;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-size: 13px;
+                        font-weight: 600;
+                        transition: all 0.3s ease;
+                        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 5px;
+                    }}
+                    .copy-btn-{key}:hover {{
+                        transform: translateY(-2px);
+                        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+                    }}
+                    .copy-btn-{key}:active {{
+                        transform: translateY(0);
+                    }}
+                    .copy-btn-{key}.success {{
+                        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+                    }}
+                    .copy-btn-{key}.error {{
+                        background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+                    }}
+                </style>
+                <button class="copy-btn-{key}" onclick="
+                    const btn = this;
+                    const texto = '{texto_escaped}';
+                    
+                    // Tenta método moderno primeiro
+                    if (navigator.clipboard && navigator.clipboard.writeText) {{
+                        navigator.clipboard.writeText(texto).then(() => {{
+                            btn.classList.add('success');
+                            btn.innerHTML = '✅ Copiado!';
+                            setTimeout(() => {{
+                                btn.classList.remove('success');
+                                btn.innerHTML = '{label}';
+                            }}, 2000);
+                        }}).catch(err => {{
+                            // Fallback para método antigo
+                            copiarFallback(texto, btn);
+                        }});
+                    }} else {{
+                        // Fallback para navegadores antigos
+                        copiarFallback(texto, btn);
+                    }}
+                    
+                    function copiarFallback(texto, btn) {{
+                        const textarea = document.createElement('textarea');
+                        textarea.value = texto;
+                        textarea.style.position = 'fixed';
+                        textarea.style.opacity = '0';
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        try {{
+                            document.execCommand('copy');
+                            btn.classList.add('success');
+                            btn.innerHTML = '✅ Copiado!';
+                            setTimeout(() => {{
+                                btn.classList.remove('success');
+                                btn.innerHTML = '{label}';
+                            }}, 2000);
+                        }} catch (err) {{
+                            btn.classList.add('error');
+                            btn.innerHTML = '❌ Erro';
+                            setTimeout(() => {{
+                                btn.classList.remove('error');
+                                btn.innerHTML = '{label}';
+                            }}, 2000);
+                        }}
+                        document.body.removeChild(textarea);
+                    }}
+                ">
                     {label}
                 </button>
                 """
-                components.html(html_code, height=40)
+                components.html(html_code, height=50)
             
             # Exibição em Cartões
             for idx, item in enumerate(sucessos):
@@ -496,20 +564,88 @@ def render(database):
                         texto_escaped = texto.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
                         
                         html_code = f"""
-                        <button onclick="navigator.clipboard.writeText('{texto_escaped}').then(() => {{
-                            this.innerHTML = '✅';
-                            setTimeout(() => {{ this.innerHTML = '{label}'; }}, 1500);
-                        }}).catch(err => {{
-                            this.innerHTML = '❌';
-                            setTimeout(() => {{ this.innerHTML = '{label}'; }}, 1500);
-                        }});" 
-                        style="background-color: #262730; color: white; border: 1px solid #4a4a5a; 
-                               padding: 5px 15px; border-radius: 5px; cursor: pointer; font-size: 14px;
-                               transition: all 0.2s ease;">
+                        <style>
+                            .copy-btn-{key} {{
+                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                color: white;
+                                border: none;
+                                padding: 8px 20px;
+                                border-radius: 8px;
+                                cursor: pointer;
+                                font-size: 13px;
+                                font-weight: 600;
+                                transition: all 0.3s ease;
+                                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 5px;
+                            }}
+                            .copy-btn-{key}:hover {{
+                                transform: translateY(-2px);
+                                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+                            }}
+                            .copy-btn-{key}:active {{
+                                transform: translateY(0);
+                            }}
+                            .copy-btn-{key}.success {{
+                                background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+                            }}
+                            .copy-btn-{key}.error {{
+                                background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+                            }}
+                        </style>
+                        <button class="copy-btn-{key}" onclick="
+                            const btn = this;
+                            const texto = '{texto_escaped}';
+                            
+                            // Tenta método moderno primeiro
+                            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                                navigator.clipboard.writeText(texto).then(() => {{
+                                    btn.classList.add('success');
+                                    btn.innerHTML = '✅ Copiado!';
+                                    setTimeout(() => {{
+                                        btn.classList.remove('success');
+                                        btn.innerHTML = '{label}';
+                                    }}, 2000);
+                                }}).catch(err => {{
+                                    // Fallback para método antigo
+                                    copiarFallback(texto, btn);
+                                }});
+                            }} else {{
+                                // Fallback para navegadores antigos
+                                copiarFallback(texto, btn);
+                            }}
+                            
+                            function copiarFallback(texto, btn) {{
+                                const textarea = document.createElement('textarea');
+                                textarea.value = texto;
+                                textarea.style.position = 'fixed';
+                                textarea.style.opacity = '0';
+                                document.body.appendChild(textarea);
+                                textarea.select();
+                                try {{
+                                    document.execCommand('copy');
+                                    btn.classList.add('success');
+                                    btn.innerHTML = '✅ Copiado!';
+                                    setTimeout(() => {{
+                                        btn.classList.remove('success');
+                                        btn.innerHTML = '{label}';
+                                    }}, 2000);
+                                }} catch (err) {{
+                                    btn.classList.add('error');
+                                    btn.innerHTML = '❌ Erro';
+                                    setTimeout(() => {{
+                                        btn.classList.remove('error');
+                                        btn.innerHTML = '{label}';
+                                    }}, 2000);
+                                }}
+                                document.body.removeChild(textarea);
+                            }}
+                        ">
                             {label}
                         </button>
                         """
-                        components.html(html_code, height=40)
+                        components.html(html_code, height=50)
                     
                     col1, col2 = st.columns([2, 1])
                     
