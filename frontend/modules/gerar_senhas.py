@@ -409,9 +409,11 @@ def render(database):
                     with c1:
                         st.caption("🔐 Senha definida neste link:")
                         st.code(item['senha_usada'], language=None)
+                        botao_copiar(item['senha_usada'], f"senha_{idx}", "📋 Copiar Senha")
                     with c2:
                         st.caption("🔗 Link OneTimeSecret:")
                         st.code(item['link'], language=None)
+                        botao_copiar(item['link'], f"link_{idx}", "📋 Copiar Link")
                     st.markdown("---")
             
             # Exportação em bloco
@@ -485,11 +487,37 @@ def render(database):
                     titulo += " ⏰ Expirado"
                 
                 with st.expander(titulo):
+                    # Função para criar botão de copiar (definida localmente também para o histórico)
+                    def botao_copiar_hist(texto: str, key: str, label: str = "📋"):
+                        """Cria um botão que copia texto para o clipboard usando JavaScript."""
+                        import streamlit.components.v1 as components
+                        
+                        # Escapa aspas e caracteres especiais
+                        texto_escaped = texto.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
+                        
+                        html_code = f"""
+                        <button onclick="navigator.clipboard.writeText('{texto_escaped}').then(() => {{
+                            this.innerHTML = '✅';
+                            setTimeout(() => {{ this.innerHTML = '{label}'; }}, 1500);
+                        }}).catch(err => {{
+                            this.innerHTML = '❌';
+                            setTimeout(() => {{ this.innerHTML = '{label}'; }}, 1500);
+                        }});" 
+                        style="background-color: #262730; color: white; border: 1px solid #4a4a5a; 
+                               padding: 5px 15px; border-radius: 5px; cursor: pointer; font-size: 14px;
+                               transition: all 0.2s ease;">
+                            {label}
+                        </button>
+                        """
+                        components.html(html_code, height=40)
+                    
                     col1, col2 = st.columns([2, 1])
                     
                     with col1:
                         st.write(f"**URL:** {link['link_url']}")
+                        botao_copiar_hist(link['link_url'], f"hist_link_{link['id']}", "📋 Copiar Link")
                         st.write(f"**Senha:** {link['senha_usada']}")
+                        botao_copiar_hist(link['senha_usada'], f"hist_senha_{link['id']}", "📋 Copiar Senha")
                         if link.get('nome_pessoa'):
                             st.write(f"**👤 Pessoa:** {link['nome_pessoa']}")
                         if gestor_pessoa:
