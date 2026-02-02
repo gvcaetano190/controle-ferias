@@ -242,7 +242,7 @@ def render(database):
             st.markdown("#### ⚙️ Configurações do Link")
             col_ttl, col_fin = st.columns(2)
             with col_ttl:
-                ttl = st.number_input("⏰ Validade (horas):", 1, 168, 24)
+                ttl = st.number_input("⏰ Validade (horas):", 1, 168, 168)
             with col_fin:
                 finalidade = st.selectbox("🎯 Finalidade:", ["Acesso Temporário", "VPN", "Email", "Admin", "Outro"])
             
@@ -327,7 +327,7 @@ def render(database):
         if "links_gerados" in st.session_state and st.session_state["links_gerados"]:
             sucessos = st.session_state["links_gerados"]
             erros = st.session_state.get("links_erros", [])
-            ttl_display = st.session_state.get("links_ttl", 24)
+            ttl_display = st.session_state.get("links_ttl", 168)
             incrementar_display = st.session_state.get("links_incrementar", False)
             
             st.success(f"✅ {len(sucessos)} Links gerados com sucesso!")
